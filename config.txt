@@ -1,0 +1,59 @@
+
+[General]
+debug = True
+
+[Pipeline]
+
+# Enable/disable preprocessing
+preprocessing = True
+
+# Enable/disable cloud detection during window filtering
+cloud_detection = True
+
+[Projection]
+target_projection = EPSG:4326
+
+[Spatial Resolution]
+pixel_width = 0.01
+pixel_height = 0.01
+
+[Resampling]
+resampling = bilinear
+
+[Registration Band]
+reference_band = 1
+target_band = 1
+
+[Data Type]
+datatype = Float32
+
+[GeoTransform]
+geotransform_tolerance = 1e-8
+
+[Valid Mask]
+valid_threshold = 0
+kernel_size = 5
+
+[Stage 3]
+
+# Sliding window parameters
+window_size = 512
+stride = 128
+
+# Window quality thresholds
+minimum_swath_coverage = 0.70
+
+# Cloud detection (DN value)
+cloud_dn_threshold = 400
+
+# Reject if cloud coverage exceeds 5%
+maximum_cloud_percentage = 0.20
+
+# Output CSV files
+accepted_window_csv = 34_outputs/accepted_window_pairs.csv
+rejected_window_csv = 34_outputs/rejected_window_pairs.csv
+
+[Stage 5]
+maximum_iterations = 5
+minimum_reliability = 30
+maximum_shift = 30
