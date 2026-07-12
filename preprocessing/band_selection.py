@@ -132,4 +132,4 @@ def select_band(
 
         verify = None
 
-        return output_file
+    return output_file

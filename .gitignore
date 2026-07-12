@@ -1,7 +1,7 @@
 Data/
-34_outputs/
-2_outputs/
-tests/
 __pycache__/
+2_outputs/
+34_outputs/
 gallery/
-share/
+stage5_phase_correlation/
+modifications.txt

@@ -5,10 +5,10 @@ main.py
 Preprocessing pipeline for MODIS–AVHRR image registration.
 """
 
+import os
 from configparser import ConfigParser
 
 from preprocessing.projection import match_projection
-from preprocessing.spatial_resolution import match_spatial_resolution
 from preprocessing.overlap import extract_common_overlap
 from preprocessing.band_selection import select_band
 from preprocessing.datatype import convert_to_float32
@@ -24,6 +24,13 @@ from window_selection.csv_writer import (
     save_accepted_pairs_csv,
     save_rejected_pairs_csv,
 )
+
+from local_registration.phase_correlation import PhaseCorrelation
+from local_registration.peak_detector import PeakDetector
+from local_registration.shift_validator import ShiftValidator
+from local_registration.subpixel_estimator import SubpixelEstimator
+from local_registration.reliability_estimator import ReliabilityEstimator
+from local_registration.mssim_evaluator import MSSIMEvaluator
 
 # ============================================================
 # Read configuration
@@ -48,16 +55,9 @@ CLOUD_DETECTION = config.getboolean(
     "cloud_detection"
 )
 
-projection = config["Projection"]["target_projection"]
-
-pixel_width = config.getfloat(
-    "Spatial Resolution",
-    "pixel_width"
-)
-
-pixel_height = config.getfloat(
-    "Spatial Resolution",
-    "pixel_height"
+LOCAL_REGISTRATION = config.getboolean(
+    "Pipeline",
+    "local_registration"
 )
 
 resampling = config["Resampling"]["resampling"]
@@ -97,10 +97,12 @@ WINDOW_SIZE = config.getint(
     "window_size"
 )
 
-STRIDE = config.getint(
+STRIDE_RATIO = config.getfloat(
     "Stage 3",
-    "stride"
+    "stride_ratio"
 )
+
+STRIDE = int(WINDOW_SIZE * STRIDE_RATIO)
 
 MINIMUM_SWATH_COVERAGE = config.getfloat(
     "Stage 3",
@@ -117,6 +119,16 @@ MAXIMUM_CLOUD_PERCENTAGE = config.getfloat(
     "maximum_cloud_percentage"
 )
 
+MODIS_DARK_THRESHOLD = config.getfloat(
+    "Stage 3",
+    "modis_dark_threshold"
+)
+
+MAXIMUM_MODIS_DARK_PERCENTAGE = config.getfloat(
+    "Stage 3",
+    "maximum_modis_dark_percentage"
+)
+
 ACCEPTED_WINDOW_CSV = config.get(
     "Stage 3",
     "accepted_window_csv"
@@ -128,6 +140,34 @@ REJECTED_WINDOW_CSV = config.get(
 )
 
 
+# ---------------------------------------------
+# Stage 5 Parameters
+# ---------------------------------------------
+
+STAGE5_OUTPUT_ROOT = config.get(
+    "Stage 5",
+    "output_root"
+)
+
+MAX_ITERATIONS = config.getint(
+    "Stage 5",
+    "max_iterations"
+)
+
+MIN_PEAK_VALUE = config.getfloat(
+    "Stage 5",
+    "min_peak_value"
+)
+
+MIN_VALID_FRACTION = config.getfloat(
+    "Stage 5",
+    "min_valid_fraction"
+)
+
+RELIABILITY_THRESHOLD = config.getfloat(
+    "Stage 5",
+    "reliability_threshold"
+)
 
 
 
@@ -167,22 +207,12 @@ if PREPROCESSING:
 
     # ---------------------------------------------------------
     # STEP 2
-    # Spatial Resolution
-    # ---------------------------------------------------------
-
-    target = match_spatial_resolution(
-        input_file=target,
-        output_file="2_outputs/02_resolution.tif",
-        x_resolution=pixel_width,
-        y_resolution=pixel_height,
-        target_srs=projection,
-        resampling=resampling,
-        debug=debug
-    )
-
-    # ---------------------------------------------------------
-    # STEP 3
     # Overlap
+    #
+    # Also enforces the final pixel grid (explicit width/
+    # height/outputBounds), which supersedes any earlier
+    # resolution-matching step - so there is no separate
+    # "match resolution" step here, it would be redundant.
     # ---------------------------------------------------------
 
     reference, target = extract_common_overlap(
@@ -195,7 +225,7 @@ if PREPROCESSING:
     )
 
     # ---------------------------------------------------------
-    # STEP 4
+    # STEP 3
     # Band Selection
     # ---------------------------------------------------------
 
@@ -214,7 +244,7 @@ if PREPROCESSING:
     )
 
     # ---------------------------------------------------------
-    # STEP 5
+    # STEP 4
     # Float32
     # ---------------------------------------------------------
 
@@ -231,7 +261,7 @@ if PREPROCESSING:
     )
 
     # ---------------------------------------------------------
-    # STEP 6
+    # STEP 5
     # Verification
     # ---------------------------------------------------------
 
@@ -243,7 +273,7 @@ if PREPROCESSING:
     )
 
     # ---------------------------------------------------------
-    # STEP 7
+    # STEP 6
     # Valid Mask
     # ---------------------------------------------------------
 
@@ -332,6 +362,8 @@ accepted_pairs, rejected_pairs, statistics = filter_window_pairs(
     minimum_swath_coverage=MINIMUM_SWATH_COVERAGE,
     maximum_cloud_percentage=MAXIMUM_CLOUD_PERCENTAGE,
     cloud_dn_threshold=CLOUD_DN_THRESHOLD,
+    modis_dark_threshold=MODIS_DARK_THRESHOLD,
+    maximum_modis_dark_percentage=MAXIMUM_MODIS_DARK_PERCENTAGE,
     cloud_detection=CLOUD_DETECTION,
     debug=debug
 )
@@ -352,3 +384,92 @@ save_rejected_pairs_csv(
 
 
 print("WINDOW SELECTION COMPLETED SUCCESSFULLY")
+
+# ==========================================================
+# Stage 5
+# Local Registration (Steps 16-21)
+# ==========================================================
+
+if LOCAL_REGISTRATION:
+
+    print("\n")
+    print("=" * 60)
+    print("RUNNING STAGE 5 - LOCAL REGISTRATION")
+    print("=" * 60)
+
+    peak_dir = os.path.join(STAGE5_OUTPUT_ROOT, "stage5_peak_detection")
+    validation_dir = os.path.join(STAGE5_OUTPUT_ROOT, "stage5_shift_validation")
+    subpixel_dir = os.path.join(STAGE5_OUTPUT_ROOT, "stage5_subpixel_estimation")
+    reliability_dir = os.path.join(STAGE5_OUTPUT_ROOT, "stage5_reliability")
+    mssim_dir = os.path.join(STAGE5_OUTPUT_ROOT, "stage5_mssim")
+
+    # STEP 16 - Cross-Power Spectrum
+    phase = PhaseCorrelation(
+        avhrr_path=target,
+        modis_path=reference,
+        csv_path=ACCEPTED_WINDOW_CSV,
+        output_dir=STAGE5_OUTPUT_ROOT
+    )
+    phase_outputs = phase.run()
+
+    # STEP 17 - Integer Peak Detection
+    peaks = PeakDetector(
+        summary_csv=phase_outputs["summary_csv"],
+        correlation_directory=phase_outputs["correlation_surface_directory"],
+        output_directory=peak_dir
+    )
+    peak_csv = peaks.execute()
+
+    # STEP 18 - Integer Shift Validation
+    validator = ShiftValidator(
+        avhrr_path=target,
+        modis_path=reference,
+        peak_csv=peak_csv,
+        output_directory=validation_dir,
+        max_iterations=MAX_ITERATIONS,
+        min_peak_value=MIN_PEAK_VALUE,
+        min_valid_fraction=MIN_VALID_FRACTION
+    )
+    validation_outputs = validator.run()
+
+    # STEP 19 - Subpixel Bootstrap
+    subpixel = SubpixelEstimator(
+        avhrr_path=target,
+        modis_path=reference,
+        validated_csv=validation_outputs["validated_shift_csv"],
+        output_directory=subpixel_dir
+    )
+    subpixel_outputs = subpixel.run()
+
+    # STEP 20 - Reliability
+    reliability = ReliabilityEstimator(
+        subpixel_csv=subpixel_outputs["subpixel_csv"],
+        surface_directory=subpixel_outputs["final_surface_directory"],
+        output_directory=reliability_dir,
+        reliability_threshold=RELIABILITY_THRESHOLD
+    )
+    reliability_outputs = reliability.run()
+
+    # STEP 21 - MSSIM Before vs After
+    mssim = MSSIMEvaluator(
+        avhrr_path=target,
+        modis_path=reference,
+        subpixel_csv=subpixel_outputs["subpixel_csv"],
+        output_directory=mssim_dir
+    )
+    mssim_outputs = mssim.run()
+
+    print("\n")
+    print("=" * 60)
+    print("STAGE 5 COMPLETED SUCCESSFULLY")
+    print("=" * 60)
+    print(f"Reliability CSV : {reliability_outputs['reliability_csv']}")
+    print(f"MSSIM CSV       : {mssim_outputs['mssim_csv']}")
+    print("=" * 60)
+
+else:
+
+    print("\n")
+    print("=" * 60)
+    print("STAGE 5 (LOCAL REGISTRATION) DISABLED")
+    print("=" * 60)

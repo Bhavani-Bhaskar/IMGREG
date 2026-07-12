@@ -21,7 +21,7 @@ Author : Bhaskar Project
 
 import os
 import numpy as np
-from osgeo import gdal
+from osgeo import gdal, osr
 
 gdal.UseExceptions()
 
@@ -97,10 +97,17 @@ def quality_check(
     # Projection
     # --------------------------------------------------
 
-    projection_ok = (
-        ref.GetProjection() ==
-        tar.GetProjection() ==
-        mask.GetProjection()
+    ref_srs = osr.SpatialReference()
+    ref_srs.ImportFromWkt(ref.GetProjection())
+
+    tar_srs = osr.SpatialReference()
+    tar_srs.ImportFromWkt(tar.GetProjection())
+
+    mask_srs = osr.SpatialReference()
+    mask_srs.ImportFromWkt(mask.GetProjection())
+
+    projection_ok = bool(
+        ref_srs.IsSame(tar_srs) and ref_srs.IsSame(mask_srs)
     )
 
     # --------------------------------------------------

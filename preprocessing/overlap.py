@@ -86,8 +86,10 @@ def extract_common_overlap(
     tar_cols = tar.RasterXSize
     tar_rows = tar.RasterYSize
 
+    tar_pixel_y = abs(gt[5])
+
     tar_xmax = tar_xmin + tar_cols * gt[1]
-    tar_ymin = tar_ymax + tar_rows * gt[5]
+    tar_ymin = tar_ymax - tar_rows * tar_pixel_y
 
     # ---------------------------------------------------
     # Floating-point overlap

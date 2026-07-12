@@ -18,7 +18,7 @@ Author : Bhaskar Project
 """
 
 import numpy as np
-from osgeo import gdal
+from osgeo import gdal, osr
 import os
 
 gdal.UseExceptions()
@@ -87,10 +87,13 @@ def verify_geotransform(
     # Projection
     # --------------------------------------------------
 
-    projection_ok = (
-        ref.GetProjection() ==
-        tar.GetProjection()
-    )
+    ref_srs = osr.SpatialReference()
+    ref_srs.ImportFromWkt(ref.GetProjection())
+
+    tar_srs = osr.SpatialReference()
+    tar_srs.ImportFromWkt(tar.GetProjection())
+
+    projection_ok = bool(ref_srs.IsSame(tar_srs))
 
     # --------------------------------------------------
     # GeoTransform

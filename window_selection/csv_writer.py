@@ -60,7 +60,9 @@ def save_accepted_pairs_csv(
 
             "swath_coverage": pair["swath_coverage"],
 
-            "cloud_percentage": pair["cloud_percentage"]
+            "cloud_percentage": pair["cloud_percentage"],
+
+            "modis_dark_percentage": pair["modis_dark_percentage"]
 
         })
 
@@ -106,9 +108,6 @@ def save_rejected_pairs_csv(
     str
     """
 
-    import os
-    import pandas as pd
-
     if debug:
         print("\n========== Saving Rejected Window Pairs ==========")
 
@@ -129,6 +128,9 @@ def save_rejected_pairs_csv(
         if pair["cloud_percentage"] > pair["maximum_cloud"]:
             reason.append("HIGH_CLOUD")
 
+        if pair["modis_dark_percentage"] > pair["maximum_modis_dark"]:
+            reason.append("LOW_MODIS_SIGNAL")
+
         rows.append({
 
             "window_id": pair["window_id"],
@@ -145,6 +147,8 @@ def save_rejected_pairs_csv(
             "swath_coverage": pair["swath_coverage"],
 
             "cloud_percentage": pair["cloud_percentage"],
+
+            "modis_dark_percentage": pair["modis_dark_percentage"],
 
             "rejection_reason": "+".join(reason)
 

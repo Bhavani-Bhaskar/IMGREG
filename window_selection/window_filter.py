@@ -7,8 +7,12 @@ Filter candidate window pairs before Stage 5.
 
 Filtering Criteria
 ------------------
-1. Swath coverage
-2. Cloud percentage
+1. Swath coverage (AVHRR)
+2. Cloud percentage (AVHRR)
+3. MODIS signal content - a window can pass both AVHRR checks
+   while its MODIS reference crop is mostly no-signal
+   (near-zero reflectance), which phase correlation cannot
+   match against regardless of how clean the AVHRR side is.
 
 Author : Bhaskar
 """
@@ -111,6 +115,49 @@ def compute_cloud_percentage(
 
 
 # ---------------------------------------------------------
+# MODIS Signal Content
+# ---------------------------------------------------------
+
+def compute_modis_dark_percentage(
+        modis_window,
+        modis_dark_threshold):
+    """
+    Fraction of the MODIS reference crop that has no real
+    signal (reflectance below modis_dark_threshold), among
+    its finite pixels.
+
+    A window with no MODIS structure to correlate against is
+    unusable regardless of AVHRR quality - this is the same
+    problem cloud detection catches on the AVHRR side, but
+    checked against the reference image instead of the target.
+
+    Parameters
+    ----------
+    modis_window : ndarray
+
+    modis_dark_threshold : float
+
+    Returns
+    -------
+    float
+        1.0 (fully invalid) if the window has no finite pixels.
+    """
+
+    finite = np.isfinite(modis_window)
+
+    number_finite = np.count_nonzero(finite)
+
+    if number_finite == 0:
+        return 1.0
+
+    dark_pixels = np.count_nonzero(
+        (modis_window < modis_dark_threshold) & finite
+    )
+
+    return dark_pixels / number_finite
+
+
+# ---------------------------------------------------------
 # Main Filtering Function
 # ---------------------------------------------------------
 
@@ -125,6 +172,10 @@ def filter_window_pairs(
         maximum_cloud_percentage,
 
         cloud_dn_threshold,
+
+        modis_dark_threshold,
+
+        maximum_modis_dark_percentage,
 
         cloud_detection=True,
 
@@ -154,7 +205,7 @@ def filter_window_pairs(
 
     reject_cloud = 0
 
-    reject_both = 0
+    reject_modis_dark = 0
 
     for pair in window_pairs:
 
@@ -186,6 +237,11 @@ def filter_window_pairs(
 
             cloud = 0.0
 
+        modis_dark = compute_modis_dark_percentage(
+            pair["modis_window"],
+            modis_dark_threshold
+        )
+
         cloud_fail = (
             cloud > maximum_cloud_percentage
         )
@@ -194,40 +250,36 @@ def filter_window_pairs(
             swath < minimum_swath_coverage
         )
 
+        modis_fail = (
+            modis_dark > maximum_modis_dark_percentage
+        )
 
-        if not swath_fail and not cloud_fail:
+        pair["swath_coverage"] = swath
 
-            pair["swath_coverage"] = swath
+        pair["cloud_percentage"] = cloud
 
-            pair["cloud_percentage"] = cloud
-            
-            pair["minimum_swath"] = minimum_swath_coverage
-            pair["maximum_cloud"] = maximum_cloud_percentage
+        pair["modis_dark_percentage"] = modis_dark
+
+        pair["minimum_swath"] = minimum_swath_coverage
+        pair["maximum_cloud"] = maximum_cloud_percentage
+        pair["maximum_modis_dark"] = maximum_modis_dark_percentage
+
+        if not swath_fail and not cloud_fail and not modis_fail:
 
             accepted.append(pair)
 
         else:
 
-            pair["swath_coverage"] = swath
-
-            pair["cloud_percentage"] = cloud
-            
-            pair["minimum_swath"] = minimum_swath_coverage
-            pair["maximum_cloud"] = maximum_cloud_percentage
-
             rejected.append(pair)
 
-            if swath_fail and cloud_fail:
-
-                reject_both += 1
-
-            elif swath_fail:
-
+            if swath_fail:
                 reject_swath += 1
 
-            elif cloud_fail:
-
+            if cloud_fail:
                 reject_cloud += 1
+
+            if modis_fail:
+                reject_modis_dark += 1
 
     statistics = {
 
@@ -241,7 +293,7 @@ def filter_window_pairs(
 
         "reject_cloud": reject_cloud,
 
-        "reject_both": reject_both
+        "reject_modis_dark": reject_modis_dark
 
     }
 
@@ -257,11 +309,13 @@ def filter_window_pairs(
 
         print()
 
-        print("Rejected Swath    :", reject_swath)
+        print("Rejected Swath      :", reject_swath)
 
-        print("Rejected Cloud    :", reject_cloud)
+        print("Rejected Cloud      :", reject_cloud)
 
-        print("Rejected Both     :", reject_both)
+        print("Rejected MODIS Dark :", reject_modis_dark)
+
+        print("(a window can fail more than one check)")
 
         print()
 
@@ -270,6 +324,10 @@ def filter_window_pairs(
         print("Cloud DN Threshold :", cloud_dn_threshold)
 
         print("Maximum Cloud Percentage :", maximum_cloud_percentage)
+
+        print("MODIS Dark Threshold :", modis_dark_threshold)
+
+        print("Maximum MODIS Dark Percentage :", maximum_modis_dark_percentage)
 
         if statistics["total"] > 0:
 
