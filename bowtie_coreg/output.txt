@@ -1,0 +1,98 @@
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/preprocessing.py
+Common grid: 3181 x 5086 @ 0.01 deg, origin (64.08889, 42.07418)
+Cloud fraction: 0.207  AVHRR land frac: 0.658  MODIS land frac: 0.215
+Saved 7 input arrays + grid.npz to /home/bhaskar/Documents/ImageReg/bowtie_coreg/inputs
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/bowtie_pipeline.py
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+
+============================================================
+TIE-POINT EXTRACTION (match -> west-infill -> grow -> curate)
+============================================================
+Dense matching: 62 candidates
+West-infill: +69 candidates (west of col 1150)
+  neighbour corroboration: 124/131 kept
+  iterative LOO curation: 113 points kept, LOO RMSE=6.7px median=2.5px
+  grow iter 1: +11 points (total 124)
+  grow iter 2: +1 points (total 125)
+  grow iter 3: +0 points (total 125)
+Seed-and-grow: 125 candidates
+  neighbour corroboration: 124/125 kept
+  iterative LOO curation: 120 points kept, LOO RMSE=6.8px median=2.6px
+Straight-coast (SW) dx-match: +46 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 139 candidates
+  neighbour corroboration: 126/139 kept
+  iterative LOO curation: 119 points kept, LOO RMSE=7.7px median=4.6px
+Local-median consistency: 110/119 points kept
+NCC validity filter: 105/110 points improve real alignment
+Gangetic protection: +28 zero-shift anchors
+dx: mean=-16.5 (expect ~0)  min=-104.0 max=+106.0
+dy: mean=-9.8  min=-31.0 max=+12.0
+
+============================================================
+STAGE 6: TPS WARP
+============================================================
+Wrote /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/avhrr_bowtie_corrected.tif
+
+============================================================
+VALIDATION AGAINST MANUAL GROUND TRUTH
+============================================================
+(1) My TPS field vs their 66 curated displacements: RMSE=62.7px median=31.0px max=182.3px
+(2) My auto points near a curated point (91 of 133): shift agreement RMSE=41.5px
+(3) My warped output vs their avhrr_registered_to_modis.tif: NCC=0.5469 over 9443692 shared valid px
+(4) Bow-tie check - my field mean dx by column band:
+    col[700-1000]: mean dx = +39.5
+    col[1000-1300]: mean dx = +12.6
+    col[1300-1600]: mean dx = -24.1
+    col[1600-1900]: mean dx = -50.4
+    col[1900-2600]: mean dx = -80.5
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ onda run -n geo python bowtie_coreg/bowtie_report.py 
+onda: command not found
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ onda run -n geo python bowtie_coreg/bowtie_report.py
+onda: command not found
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/bowtie_report.py
+Running full automatic tie-point extraction (match -> west-infill -> grow -> curate)...
+Dense matching: 62 candidates
+West-infill: +69 candidates (west of col 1150)
+  neighbour corroboration: 124/131 kept
+  iterative LOO curation: 113 points kept, LOO RMSE=6.7px median=2.5px
+  grow iter 1: +11 points (total 124)
+  grow iter 2: +1 points (total 125)
+  grow iter 3: +0 points (total 125)
+Seed-and-grow: 125 candidates
+  neighbour corroboration: 124/125 kept
+  iterative LOO curation: 120 points kept, LOO RMSE=6.8px median=2.6px
+Straight-coast (SW) dx-match: +46 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 139 candidates
+  neighbour corroboration: 126/139 kept
+  iterative LOO curation: 119 points kept, LOO RMSE=7.7px median=4.6px
+Local-median consistency: 110/119 points kept
+NCC validity filter: 105/110 points improve real alignment
+Gangetic protection: +28 zero-shift anchors
+Extracted 105 matched tie points (+28 Gangetic protection anchors)
+
+Per-tie-point NCC validation (AVHRR shifted onto MODIS)...
+VALID tie points: 105/105 (mean NCC 0.138 -> 0.549)
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/tiepoint_vectors.png
+
+Building TPS warp for whole-scene overlay...
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_before_after.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/tiepoint_gallery.png
+
+Report written to /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/visualize_overlay.py 
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_original_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_shifted_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_compare.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_shifted_blend.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_redcyan_before.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/overlay_redcyan_after.png
+
+Done. Overlays in /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/zoom_swcoast.py
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/swcoast_redcyan.png
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/swcoast_blend.png
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ conda run -n geo python bowtie_coreg/assemble_report.py 
+Saved /home/bhaskar/Documents/ImageReg/bowtie_coreg/output/report/report_page.png
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ 
