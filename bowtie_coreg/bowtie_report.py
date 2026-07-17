@@ -161,6 +161,14 @@ def fig_gallery(ta, off, ncc_ba, a_arr, m_arr, path):
 
 
 def main():
+    global MANUAL_DIR, REPORT_DIR
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--inputs", default=MANUAL_DIR)
+    p.add_argument("--output", default=os.path.dirname(REPORT_DIR))
+    args = p.parse_args()
+    MANUAL_DIR = args.inputs
+    REPORT_DIR = os.path.join(args.output, "report")
     os.makedirs(REPORT_DIR, exist_ok=True)
 
     arrays = {n: np.load(os.path.join(MANUAL_DIR, n + ".npy")) for n in
@@ -205,13 +213,61 @@ def main():
     fig_vectors(ta, off, m_arr, (H, W), os.path.join(REPORT_DIR, "tiepoint_vectors.png"))
 
     print("\nBuilding TPS warp for whole-scene overlay...")
-    dxf, dyf = bp.fit_tps_field(ta_all, off_all, W, H)  # anchors included in the field
+    dxf, dyf = bp.build_shift_field(ta_all, off_all, arrays)  # TPS + data-driven trust mask
     a_after = bp.warp_with_field(a_arr, dxf, dyf)
     fig_overlay(a_arr, a_after, m_arr, os.path.join(REPORT_DIR, "overlay_before_after.png"))
 
     fig_gallery(ta, off, ncc_ba, a_arr, m_arr, os.path.join(REPORT_DIR, "tiepoint_gallery.png"))
 
+    # self-referential validation: cloud-masked NCC (orig vs corrected) on a grid,
+    # overall and by 3x3 spatial tile (generalises to any granule / area)
+    scene_ncc_report(a_arr, a_after, m_arr, ~arrays["cloud_mask"],
+                     os.path.join(REPORT_DIR, "ncc_validation.txt"))
+
     print(f"\nReport written to {REPORT_DIR}/")
+
+
+def scene_ncc_report(orig, corr, modis, clear, path, win=110, step=110):
+    H, W = orig.shape
+    rows = []
+    for r in range(0, H - win, step):
+        for c in range(0, W - win, step):
+            cl = clear[r:r + win, c:c + win]
+            mref = modis[r:r + win, c:c + win]
+            b = ncc(orig[r:r + win, c:c + win], mref) if cl.mean() > 0.5 else np.nan
+            # cloud-masked
+            b = _ncc_masked(orig[r:r + win, c:c + win], mref, cl)
+            a = _ncc_masked(corr[r:r + win, c:c + win], mref, cl)
+            if np.isfinite(b) and np.isfinite(a):
+                rows.append((r + win // 2, c + win // 2, b, a))
+    rows = np.array(rows)
+    lines = ["SELF-REFERENTIAL VALIDATION (cloud-masked NCC vs MODIS, original -> corrected)\n"]
+    if len(rows):
+        b, a = rows[:, 2], rows[:, 3]
+        lines.append(f"checkpoint windows: {len(rows)}\n")
+        lines.append(f"overall mean NCC: {b.mean():.3f} -> {a.mean():.3f}  "
+                     f"(delta {a.mean()-b.mean():+.3f}, improved {100*(a>b).mean():.0f}%)\n\n")
+        lines.append("by 3x3 spatial tile (row-band x col-band):\n")
+        for ri, (r0, r1) in enumerate([(0, H//3), (H//3, 2*H//3), (2*H//3, H)]):
+            for ci, (c0, c1) in enumerate([(0, W//3), (W//3, 2*W//3), (2*W//3, W)]):
+                m = (rows[:, 0] >= r0) & (rows[:, 0] < r1) & (rows[:, 1] >= c0) & (rows[:, 1] < c1)
+                if m.sum():
+                    lines.append(f"  tile[{ri},{ci}] n={m.sum():3d}  "
+                                 f"{rows[m,2].mean():.3f} -> {rows[m,3].mean():.3f}  "
+                                 f"({rows[m,3].mean()-rows[m,2].mean():+.3f})\n")
+    open(path, "w").writelines(lines)
+    if len(rows):
+        print(f"Scene NCC: {rows[:,2].mean():.3f} -> {rows[:,3].mean():.3f} "
+              f"({100*(rows[:,3]>rows[:,2]).mean():.0f}% windows improved) -> {path}")
+
+
+def _ncc_masked(a, b, mask):
+    v = np.isfinite(a) & np.isfinite(b) & mask & (a != 0) & (b != 0)
+    if v.sum() < a.size * 0.15:
+        return np.nan
+    av = a[v] - a[v].mean(); bv = b[v] - b[v].mean()
+    d = np.sqrt((av ** 2).sum() * (bv ** 2).sum())
+    return float((av * bv).sum() / d) if d else np.nan
 
 
 if __name__ == "__main__":

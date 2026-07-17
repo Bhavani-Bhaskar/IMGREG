@@ -2,29 +2,20 @@
 bowtie_pipeline.py
 ------------------
 
-Automatic AVHRR->MODIS geolocation correction reproducing the user's MANUAL
-(QGIS-curated) result, whose registered output and 66 hand-picked tie points
-are the ground truth in manual_registration/claude/.
+Automatic AVHRR->MODIS geolocation correction.
 
-Why this replaces phasecorr_pipeline.py: that pipeline used a global
-phase-correlation pre-shift and found a spurious ~112px uniform translation.
-The manual ground truth proves the real error is a BOW-TIE / panoramic
-across-track distortion - mean dx ~= 0, with dx flipping sign across the nadir
-column (~1550), magnitude growing toward the swath edges, and the swath
-shrinking at top & bottom. There is NO global shift (a raw global
-phaseCorrelate gives response ~0). So this pipeline follows the manual method:
-match binary land/water COASTLINE masks locally (sensor/time invariant), with
-NO global pre-shift, and fit a Thin Plate Spline.
+The geolocation error is a BOW-TIE / panoramic across-track distortion - mean
+dx ~= 0, with dx flipping sign across the nadir column (~1550), magnitude
+growing toward the swath edges, and the swath shrinking at top & bottom. There
+is NO global shift. So the pipeline matches binary land/water COASTLINE masks
+locally (sensor/time invariant), with NO global pre-shift, plus terrain-
+structure matching inland, and fits a Thin Plate Spline.
 
-Design choice: reuse the user's already-validated common-grid arrays
-(manual_registration/claude/*.npy: s_arr SWIR, m_arr MODIS, b4_arr thermal,
-a_arr AVHRR-visible, s_land/m_land binary masks, cloud_mask) as READ-ONLY
-inputs. This guarantees we are on the exact same grid as the ground truth, so
-validation against curated_ta/off.npy and avhrr_registered_to_modis.tif is
-exact. The novel part here is automating the tie-point curation the user did
-by hand in QGIS: dense tile matching (their proven Stage 4) + automatic
-bow-tie-consistency curation (their Stage 5 logic: LOO + neighbour
-corroboration) to replace manual point picking.
+Inputs are the common-grid arrays in `inputs/` produced by preprocessing.py
+directly from the raw granule bands (a_arr AVHRR-visible, s_arr SWIR, b4_arr
+thermal, m_arr MODIS, s_land/m_land land masks, cloud_mask). The pipeline
+depends only on those - no external/manual files. curated_ta/off.npy in
+inputs/, if present, are used only for optional accuracy validation.
 
 Run with the `geo` conda env:
     conda run -n geo python bowtie_pipeline.py
@@ -45,17 +36,17 @@ _BASE = os.path.dirname(os.path.abspath(__file__))   # bowtie_coreg/
 _ROOT = os.path.dirname(_BASE)                        # project root
 INPUTS_DIR = os.path.join(_BASE, "inputs")           # built by preprocessing.py from raw bands
 OUTPUT_DIR = os.path.join(_BASE, "output")           # all generated outputs
-# optional ground truth (66 hand-picked tie points) for validation only
+# optional ground truth (hand-picked tie points) for validation only; if absent
+# the pipeline still runs fully from raw bands and just skips validation.
 GT_TA = os.path.join(INPUTS_DIR, "curated_ta.npy")
 GT_OFF = os.path.join(INPUTS_DIR, "curated_off.npy")
-EXPECTED_TIF = os.path.join(_ROOT, "manual_registration", "claude", "avhrr_registered_to_modis.tif")
 
 # Stage 4 dense tile matching (based on the user's proven parameters, but a
 # denser grid + a couple of extra tile sizes: coastline tiles are sparse, and
 # the manual set had ~60 points across the scene, so we oversample candidates
 # and let the automatic curation reject the extras).
 TILE = 200
-TILE_SIZES = (160, 200, 240)  # multi-scale: catches coastline at more places
+TILE_SIZES = (120, 160, 200, 240)  # multi-scale (incl. smaller 120px for more tie points)
 STEP = 50                     # was 100: denser candidate grid
 SEARCH = 170                  # max detectable shift +/-170px (true bow-tie max ~150px)
 SCORE_THRESH = 0.55
@@ -93,11 +84,15 @@ GROW_ACCEPT_PX = 22          # accepted match must land within this of the predi
 # columns and rely on neighbour-corroboration to keep only the mutually
 # consistent ones (the correct far-west anchors agree with each other; the
 # scattered wrong matches don't).
+# Permissive infill: a relaxed-cloud, permissive-distinctiveness coastline pass
+# over the WHOLE scene (data-driven, not restricted to any column). Neighbour
+# corroboration downstream keeps only mutually-consistent matches, so the extra
+# candidates are safe. (Was 'west infill' - generalised for any granule.)
 WEST_INFILL = True
-WEST_COL_MAX = 1150          # only accept infill matches west of this column
+WEST_COL_MAX = None          # None = whole scene (no hardcoded column limit)
 WEST_CLOUD_MIN = 0.35
 WEST_SCORE_THRESH = 0.52
-WEST_PEAK_RATIO = 0.93       # permissive distinctiveness for the west pass
+WEST_PEAK_RATIO = 0.93       # permissive distinctiveness for the infill pass
 
 # Straight-coast (Karnataka/Kerala) matching. That SW coast is a near-straight
 # N-S line: 2D matching is ambiguous ALONG the coast (aperture problem) and
@@ -105,8 +100,11 @@ WEST_PEAK_RATIO = 0.93       # permissive distinctiveness for the west pass
 # (dx, east-west) component with a wide-x / narrow-y search locked around the
 # bow-tie model's predicted position, and let dy stay at the (small, smooth)
 # predicted value. Gives a clean dx gradient down the coast.
-STRAIGHT_COAST = True
-SC_REGION = (860, 1400, 2400, 3380)  # col_min, col_max, row_min, row_max
+# Straight-coast dx-match was hardcoded to the 33701 Karnataka/Kerala coast, so
+# it is DISABLED in the general pipeline (the model-constrained 'grow' pass
+# provides comparable coverage without a hardcoded region).
+STRAIGHT_COAST = False
+SC_REGION = (860, 1400, 2400, 3380)  # col_min, col_max, row_min, row_max (unused)
 SC_TILE = 200
 SC_STEP = 60
 SC_SEARCH_X = 75             # wide search across-shore (reliable dx)
@@ -131,15 +129,38 @@ IM_STD_MIN = 4.0            # min template texture (structure std)
 IM_CLOUD_MIN = 0.85
 IM_GAUSS = 1.5
 
-# Gangetic-plain protection. The flat Indo-Gangetic plain has almost no
-# matchable terrain texture, so interior matching there produces spurious
-# shifts; and it was already the best-aligned region originally, so any imposed
-# warp degrades it. So: (a) exclude the plain from interior matching, (b) pin
-# it with zero-shift anchors that hold its original (good) geolocation while the
-# Himalaya to its north is still corrected.
-GANGETIC_PROTECT = True
-GP_REGION = (600, 2050, 1000, 1680)   # col0, col1, row0, row1
-GP_ANCHOR_STEP = 130
+# DATA-DRIVEN AUTO-PROTECTION (replaces all hardcoded region boxes). Any place
+# the correction can't be trusted is pinned to its original geolocation with a
+# zero-shift anchor. A coarse-grid cell is "protected" if it is:
+#   - CLOUDY      : local clear fraction < AP_CLEAR_MIN  (can't match through cloud)
+#   - SWATH EDGE  : local valid fraction < AP_VALID_MIN  (too little AVHRR data)
+#   - EXTRAPOLATED: farther than AP_FAR_PX from any verified tie point
+# This generalises to any granule: on a cloud-free pass the same region is NOT
+# protected and gets corrected normally.
+AUTO_PROTECT = True
+AP_WIN = 80            # half-window for local cloud/valid stats
+AP_CLEAR_MIN = 0.55    # local clear-sky fraction below this -> not trusted (cloudy)
+AP_VALID_MIN = 0.55    # local AVHRR-valid fraction below this -> not trusted (edge)
+AP_FEATHER = 45        # px; feather the trust mask so the warp has no hard seam
+AP_DROP_CLEAR = 0.45   # drop matched points whose local clear fraction < this
+AP_DROP_VALID = 0.45   # drop matched points whose local valid fraction < this
+GANGETIC_PROTECT = True  # kept as the on/off flag for auto-protection
+
+# Cloud-masked region infill for specific hard boxes that stay misaligned:
+# Gujarat (heavy cloud -> few matches) and the Bangladesh/Ganges delta (at the
+# AVHRR swath edge -> valid-fraction gate rejects it). Clouds are removed from
+# the AVHRR land mask (thermal mask) so the visible coastline drives matching,
+# smaller tiles + a relaxed valid gate give denser coverage, and the shift is
+# locked around the bow-tie model prediction. Boxes are (col0,col1,row0,row1).
+REGION_INFILL = False
+RI_BOXES = [(480, 860, 1550, 2250),     # Gujarat / Kathiawar
+            (2350, 2850, 1650, 2260)]   # Bangladesh / Ganges delta
+RI_TILES = (110, 150)                   # smaller windows -> more tie points
+RI_STEP = 45
+RI_SEARCH = 50
+RI_SCORE_THRESH = 0.42
+RI_VALID_MIN = 0.5                      # relaxed: these boxes sit at the swath edge
+RI_DEDUP = 45
 
 # Auto-curation (replaces manual QGIS picking).
 NEIGHBOR_K = 4            # nearest neighbours for corroboration
@@ -191,7 +212,7 @@ def save_geotiff(array, geotransform, projection, path, dtype=gdal.GDT_Float32):
 
 # ============================================================
 # Stage 4: dense tile matching on binary coastline masks
-# (ported from manual_registration/claude/stage4_tile_matching.py)
+# (NCC coastline tile matching)
 # ============================================================
 
 def _match_one_scale(templ_img, templ_valid, ref_img, ref_valid, clear, tile):
@@ -275,7 +296,8 @@ def west_infill_match(templ_img, templ_valid, ref_img, ref_valid, clear):
     for tile in TILE_SIZES:
         half = tile // 2
         for r in range(SEARCH + tile, H - SEARCH - tile, STEP):
-            for c in range(SEARCH + tile, min(WEST_COL_MAX, W - SEARCH - tile), STEP):
+            col_max = W - SEARCH - tile if WEST_COL_MAX is None else min(WEST_COL_MAX, W - SEARCH - tile)
+            for c in range(SEARCH + tile, col_max, STEP):
                 if templ_valid[r:r + tile, c:c + tile].mean() < VALID_FRAC_MIN:
                     continue
                 if clear[r:r + tile, c:c + tile].mean() < WEST_CLOUD_MIN:
@@ -333,6 +355,59 @@ def fit_bowtie_model(ta, off, order=GROW_MODEL_ORDER):
     return predict
 
 
+def auto_protect_drop(ta, off, sc, arrays, verbose=True):
+    """Drop matched points that fall in strongly cloudy / off-swath cells (their
+    matches are unreliable). Data-driven, no hardcoded regions."""
+    s_valid = arrays["s_arr"] > 0
+    clear = ~arrays["cloud_mask"]
+    w = AP_WIN
+
+    def local(mask, r, c):
+        return mask[max(r - w, 0):r + w, max(c - w, 0):c + w].mean()
+
+    keep = np.ones(len(ta), dtype=bool)
+    for i, (c, r) in enumerate(ta):
+        ri, ci = int(r), int(c)
+        if local(clear, ri, ci) < AP_DROP_CLEAR or local(s_valid, ri, ci) < AP_DROP_VALID:
+            keep[i] = False
+    if verbose:
+        print(f"Auto-protect: dropped {int((~keep).sum())} cloud/edge matched points")
+    return ta[keep], off[keep], sc[keep]
+
+
+def build_trust_mask(ta, arrays):
+    """
+    Per-pixel weight (0..1) for HOW MUCH of the fitted shift field to apply.
+    1 where the correction is trustworthy (clear, on-swath, INSIDE the convex
+    hull of tie points); tapered to 0 in cloudy / swath-edge / extrapolated
+    regions so those keep their original geolocation. Feathered so the warp has
+    no hard seams. Data-driven -> generalises to any granule.
+    """
+    from scipy.ndimage import uniform_filter
+    s_valid = arrays["s_arr"] > 0
+    clear = ~arrays["cloud_mask"]
+    H, W = s_valid.shape
+
+    clear_f = uniform_filter(clear.astype(np.float32), 2 * AP_WIN)
+    valid_f = uniform_filter(s_valid.astype(np.float32), 2 * AP_WIN)
+    trust = (clear_f >= AP_CLEAR_MIN) & (valid_f >= AP_VALID_MIN) & s_valid
+
+    if len(ta) >= 4:
+        from scipy.spatial import Delaunay
+        try:
+            hull = Delaunay(ta)
+            step = 40
+            ys, xs = np.mgrid[0:H:step, 0:W:step]
+            insideC = (hull.find_simplex(np.column_stack([xs.ravel(), ys.ravel()])) >= 0)
+            inside = cv2.resize(insideC.reshape(xs.shape).astype(np.float32), (W, H),
+                                interpolation=cv2.INTER_LINEAR) > 0.5
+            trust &= inside
+        except Exception:
+            pass
+
+    return gaussian_filter(trust.astype(np.float32), AP_FEATHER)
+
+
 def gradient_structure(arr, valid):
     """Gradient-magnitude structure image (edges: ridges, rivers, snow lines).
     Invalid pixels filled with the median so no false edges form at borders."""
@@ -355,10 +430,6 @@ def interior_structure_match(a_struct, m_struct, a_arr, m_arr, a_valid, m_valid,
                 continue
             if clear[r:r + tile, c:c + tile].mean() < IM_CLOUD_MIN:
                 continue
-            if GANGETIC_PROTECT:
-                gc0, gc1, gr0, gr1 = GP_REGION
-                if gc0 <= c + half < gc1 and gr0 <= r + half < gr1:
-                    continue                      # skip the flat Gangetic plain
             t = a_struct[r:r + tile, c:c + tile]
             if t.std() < IM_STD_MIN:
                 continue                          # too little texture to match
@@ -384,6 +455,52 @@ def interior_structure_match(a_struct, m_struct, a_arr, m_arr, a_valid, m_valid,
             tb.append((c + half + dx, r + half + dy))
             sc.append(maxval)
     return np.array(ta), np.array(tb), np.array(sc)
+
+
+def region_infill(model, s_land, m_land, cloud, s_valid, m_valid):
+    """Cloud-masked, model-constrained coastline matching inside the RI_BOXES
+    (Gujarat, Bangladesh delta). AVHRR clouds are removed from the land mask so
+    the visible coastline drives matching; smaller tiles + relaxed valid gate
+    give denser coverage; the search is locked around the model's prediction."""
+    clear = ~cloud
+    H, W = s_land.shape
+    s_nc = cv2.GaussianBlur(((s_land & clear).astype(np.uint8) * 255), (5, 5), 1.0)
+    m_u8 = cv2.GaussianBlur((m_land.astype(np.uint8) * 255), (5, 5), 1.0)
+
+    ta, tb, sc = [], [], []
+    for (c0, c1, r0, r1) in RI_BOXES:
+        for tile in RI_TILES:
+            half = tile // 2
+            for r in range(r0, min(r1, H - tile), RI_STEP):
+                for c in range(c0, min(c1, W - tile), RI_STEP):
+                    if s_valid[r:r + tile, c:c + tile].mean() < RI_VALID_MIN:
+                        continue
+                    t = s_nc[r:r + tile, c:c + tile]
+                    frac = (t > 127).mean()
+                    if frac < 0.04 or frac > 0.96:
+                        continue
+                    pdx, pdy = model([c + half], [r + half])
+                    pdx, pdy = float(pdx[0]), float(pdy[0])
+                    sr0 = r + int(round(pdy)) - RI_SEARCH
+                    sc0 = c + int(round(pdx)) - RI_SEARCH
+                    sr1 = sr0 + tile + 2 * RI_SEARCH
+                    sc1 = sc0 + tile + 2 * RI_SEARCH
+                    if sr0 < 0 or sc0 < 0 or sr1 > H or sc1 > W:
+                        continue
+                    res = cv2.matchTemplate(m_u8[sr0:sr1, sc0:sc1], t, cv2.TM_CCOEFF_NORMED)
+                    _, maxval, _, maxloc = cv2.minMaxLoc(res)
+                    if maxval < RI_SCORE_THRESH:
+                        continue
+                    mr0, mc0 = sr0 + maxloc[1], sc0 + maxloc[0]
+                    if m_valid[mr0:mr0 + tile, mc0:mc0 + tile].mean() < MATCH_VALID_MIN:
+                        continue
+                    ta.append((c + half, r + half))
+                    tb.append((c + half + (mc0 - c), r + half + (mr0 - r)))
+                    sc.append(maxval)
+    if not ta:
+        return np.array([]), np.array([]), np.array([])
+    a, b, s = np.array(ta), np.array(tb), np.array(sc)
+    return dedup_points(a, b, s, radius=RI_DEDUP)
 
 
 def straight_coast_match(model, templ_img, templ_valid, ref_img, ref_valid, clear):
@@ -586,6 +703,19 @@ def fit_tps_field(ta, off, W, H):
     return dxf, dyf
 
 
+def build_shift_field(ta, off, arrays):
+    """Fit the TPS field from the tie points and (if enabled) multiply by the
+    data-driven trust mask so cloudy / swath-edge / extrapolated regions keep
+    their original geolocation. Used by both the pipeline and the report."""
+    H, W = arrays["a_arr"].shape
+    dxf, dyf = fit_tps_field(ta, off, W, H)
+    if AUTO_PROTECT:
+        trust = build_trust_mask(ta, arrays)
+        dxf = dxf * trust
+        dyf = dyf * trust
+    return dxf, dyf
+
+
 def warp_with_field(arr, dxf, dyf):
     H, W = arr.shape
     xs, ys = np.meshgrid(np.arange(W), np.arange(H))
@@ -625,25 +755,8 @@ def validate(ta, off, dxf, dyf, warped, arrays, geotransform, projection):
         print(f"(2) My auto points near a curated point ({near.sum()} of {len(ta)}): "
               f"shift agreement RMSE={np.sqrt(np.mean(shift_err**2)):.1f}px")
 
-    # (3) my warped raster vs their registered raster (optional legacy reference)
-    if not os.path.exists(EXPECTED_TIF):
-        print("(3) legacy registered raster not present - skipped)")
-        print(f"(4) Bow-tie check - my field mean dx by column band:")
-        for lo, hi in [(700, 1000), (1000, 1300), (1300, 1600), (1600, 1900), (1900, 2600)]:
-            print(f"    col[{lo}-{hi}]: mean dx = {dxf[:, lo:hi].mean():+.1f}")
-        return
-    ref = gdal.Open(EXPECTED_TIF)
-    expected = ref.GetRasterBand(1).ReadAsArray().astype(np.float32)
-    h = min(expected.shape[0], warped.shape[0])
-    e, w = expected[:h], warped[:h]
-    v = (e > 0) & (w > 0) & np.isfinite(e) & np.isfinite(w)
-    ev, wv = e[v] - e[v].mean(), w[v] - w[v].mean()
-    ncc = float((ev * wv).sum() / np.sqrt((ev**2).sum() * (wv**2).sum()))
-    print(f"(3) My warped output vs their avhrr_registered_to_modis.tif: "
-          f"NCC={ncc:.4f} over {v.sum()} shared valid px")
-
-    # nadir-flip sanity: my field's dx sign should flip across ~col 1550
-    print(f"(4) Bow-tie check - my field mean dx by column band:")
+    # (3) bow-tie sanity: my field's dx sign should flip across the nadir (~col 1550)
+    print(f"(3) Bow-tie check - field mean dx by column band:")
     for lo, hi in [(700, 1000), (1000, 1300), (1300, 1600), (1600, 1900), (1900, 2600)]:
         print(f"    col[{lo}-{hi}]: mean dx = {dxf[:, lo:hi].mean():+.1f}")
 
@@ -688,16 +801,18 @@ def dedup_points(ta, tb, sc, radius=40):
     return ta[keep], tb[keep], sc[keep]
 
 
-def _ncc(a, b):
+def _ncc(a, b, mask=None):
     v = np.isfinite(a) & np.isfinite(b)
-    if v.sum() < a.size * 0.3:
+    if mask is not None:
+        v &= mask                       # exclude cloud pixels from the correlation
+    if v.sum() < a.size * 0.2:
         return np.nan
     av = a[v] - a[v].mean(); bv = b[v] - b[v].mean()
     dd = np.sqrt((av ** 2).sum() * (bv ** 2).sum())
     return float((av * bv).sum() / dd) if dd else np.nan
 
 
-def ncc_valid_mask(ta, off, a_arr, m_arr, win=90):
+def ncc_valid_mask(ta, off, a_arr, m_arr, win=90, clear=None):
     """
     Keep only tie points whose shift actually improves alignment on the REAL
     imagery (AVHRR visible vs MODIS), independent of any field model:
@@ -717,8 +832,11 @@ def ncc_valid_mask(ta, off, a_arr, m_arr, win=90):
                 win <= by < H - win and win <= bx < W - win):
             continue
         m_ref = m_arr[by - win:by + win, bx - win:bx + win]
-        before = _ncc(a_arr[by - win:by + win, bx - win:bx + win], m_ref)
-        after = _ncc(a_arr[ay - win:ay + win, ax - win:ax + win], m_ref)
+        cl = None
+        if clear is not None:
+            cl = clear[by - win:by + win, bx - win:bx + win] & clear[ay - win:ay + win, ax - win:ax + win]
+        before = _ncc(a_arr[by - win:by + win, bx - win:bx + win], m_ref, cl)
+        after = _ncc(a_arr[ay - win:ay + win, ax - win:ax + win], m_ref, cl)
         keep[i] = np.isfinite(after) and np.isfinite(before) and after > before
     return keep
 
@@ -741,7 +859,7 @@ def extract_tie_points(arrays, verbose=True):
     if WEST_INFILL:
         wa, wb, ws = west_infill_match(s_u8, s_valid, m_u8, m_valid, clear)
         if verbose:
-            print(f"West-infill: +{len(wa)} candidates (west of col {WEST_COL_MAX})")
+            print(f"Permissive infill: +{len(wa)} candidates (whole scene)")
         if len(wa):
             tie_a = np.vstack([tie_a, wa]); tie_b = np.vstack([tie_b, wb])
             scores = np.concatenate([scores, ws])
@@ -782,6 +900,22 @@ def extract_tie_points(arrays, verbose=True):
             tie_a = np.vstack([tie_a, ia]); tie_b = np.vstack([tie_b, ib])
             scores = np.concatenate([scores, isc])
 
+    if REGION_INFILL:
+        ca, coff2, _, _ = auto_curate(tie_a, tie_b, scores)
+        model = fit_bowtie_model(ca, coff2)
+        ra, rb, rsc = region_infill(model, arrays["s_land"], arrays["m_land"],
+                                    arrays["cloud_mask"], s_valid, m_valid)
+        # cloud-masked NCC gate so cloudy-but-real matches (Gujarat) survive
+        if len(ra):
+            keep = ncc_valid_mask(ra, rb - ra, arrays["a_arr"].astype(np.float32),
+                                  arrays["m_arr"].astype(np.float32), clear=clear)
+            ra, rb, rsc = ra[keep], rb[keep], rsc[keep]
+        if verbose:
+            print(f"Region infill (Gujarat + Bangladesh delta): +{len(ra)} NCC-valid candidates")
+        if len(ra):
+            tie_a = np.vstack([tie_a, ra]); tie_b = np.vstack([tie_b, rb])
+            scores = np.concatenate([scores, rsc])
+
     # dedup the merged main+west-infill+grow set so no point self-corroborates
     tie_a, tie_b, scores = dedup_points(tie_a, tie_b, scores)
     if verbose:
@@ -800,36 +934,28 @@ def extract_tie_points(arrays, verbose=True):
     # final data-driven filter: keep only points that improve NCC on the real
     # imagery (removes wrong-but-self-consistent matches like the Karnataka slips)
     keep = ncc_valid_mask(ta, off, arrays["a_arr"].astype(np.float32),
-                          arrays["m_arr"].astype(np.float32))
+                          arrays["m_arr"].astype(np.float32), clear=clear)
     if verbose:
         print(f"NCC validity filter: {keep.sum()}/{len(ta)} points improve real alignment")
     ta, off, sc = ta[keep], off[keep], sc[keep]
 
-    if GANGETIC_PROTECT:
-        gc0, gc1, gr0, gr1 = GP_REGION
-        s_land = arrays["s_land"]
-        clear = ~arrays["cloud_mask"]
-        tree = cKDTree(ta) if len(ta) else None
-        anchors = []
-        for r in range(gr0, gr1, GP_ANCHOR_STEP):
-            for c in range(gc0, gc1, GP_ANCHOR_STEP):
-                if not (s_land[r, c] and clear[r, c]):
-                    continue
-                if tree is not None and tree.query([c, r])[0] < GP_ANCHOR_STEP:
-                    continue                      # a real match already constrains here
-                anchors.append((c, r))
-        if anchors:
-            anchors = np.array(anchors, dtype=float)
-            ta = np.vstack([ta, anchors])
-            off = np.vstack([off, np.zeros_like(anchors)])       # zero shift = keep original
-            sc = np.concatenate([sc, -np.ones(len(anchors))])    # sentinel score for anchors
-            if verbose:
-                print(f"Gangetic protection: +{len(anchors)} zero-shift anchors")
+    if AUTO_PROTECT:
+        ta, off, sc = auto_protect_drop(ta, off, sc, arrays, verbose=verbose)
 
     return ta, off, sc
 
 
 def main():
+    global INPUTS_DIR, OUTPUT_DIR, GT_TA, GT_OFF
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--inputs", default=INPUTS_DIR)
+    p.add_argument("--output", default=OUTPUT_DIR)
+    args = p.parse_args()
+    INPUTS_DIR, OUTPUT_DIR = args.inputs, args.output
+    GT_TA = os.path.join(INPUTS_DIR, "curated_ta.npy")
+    GT_OFF = os.path.join(INPUTS_DIR, "curated_off.npy")
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     arrays, geotransform, projection = load_arrays()
 
@@ -847,8 +973,7 @@ def main():
     print("\n" + "=" * 60)
     print("STAGE 6: TPS WARP")
     print("=" * 60)
-    H, W = arrays["a_arr"].shape
-    dxf, dyf = fit_tps_field(ta, off, W, H)
+    dxf, dyf = build_shift_field(ta, off, arrays)
     warped = warp_with_field(arrays["a_arr"], dxf, dyf)
     save_geotiff(dxf, geotransform, projection, os.path.join(OUTPUT_DIR, "shift_field_dx.tif"))
     save_geotiff(dyf, geotransform, projection, os.path.join(OUTPUT_DIR, "shift_field_dy.tif"))

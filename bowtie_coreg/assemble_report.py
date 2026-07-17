@@ -17,10 +17,15 @@ from osgeo import gdal
 
 gdal.UseExceptions()
 import os
+import argparse
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_BASE)
-d = os.path.join(_BASE, "inputs") + "/"   # inputs built by preprocessing.py
-_OUTDIR = os.path.join(_BASE, "output")
+_p = argparse.ArgumentParser()
+_p.add_argument("--inputs", default=os.path.join(_BASE, "inputs"))
+_p.add_argument("--output", default=os.path.join(_BASE, "output"))
+_a = _p.parse_args()
+d = _a.inputs + "/"                        # inputs built by preprocessing.py
+_OUTDIR = _a.output
 OUT = os.path.join(_OUTDIR, "report", "report_page.png")
 
 a = np.load(d + "a_arr.npy").astype(np.float32)
@@ -84,14 +89,24 @@ mn, an, cn = norm(m[::d3, ::d3]), norm(a[::d3, ::d3]), norm(c[::d3, ::d3])
 avalid = np.isfinite(a[::d3, ::d3]) & (a[::d3, ::d3] > 0)
 cvalid = np.isfinite(c[::d3, ::d3]) & (c[::d3, ::d3] > 0)
 
-# SW coast crop
-R0, R1, C0, C1 = 2600, 3480, 860, 1380
+# Coastline detail crop - data-driven: centre on the median tie-point location
+# (where the correction actually happens), so it is correct for any granule.
+Himg, Wimg = a.shape
+if len(ta):
+    cx0, cy0 = int(np.median(ta[:, 0])), int(np.median(ta[:, 1]))
+else:
+    cx0, cy0 = Wimg // 2, Himg // 2
+hh, hw = 440, 260
+R0, R1 = max(cy0 - hh, 0), min(cy0 + hh, Himg)
+C0, C1 = max(cx0 - hw, 0), min(cx0 + hw, Wimg)
 acr, mcr, ccr = norm(a[R0:R1, C0:C1]), norm(m[R0:R1, C0:C1]), norm(c[R0:R1, C0:C1])
 
 fig = plt.figure(figsize=(16, 20))
 gs = GridSpec(3, 4, figure=fig, height_ratios=[1.25, 1.6, 1.0], hspace=0.14, wspace=0.06)
 
-fig.suptitle("Automatic AVHRR -> MODIS Geolocation Correction (bow-tie / panoramic distortion)",
+_gran = os.path.basename(os.path.dirname(_OUTDIR)) if os.path.basename(_OUTDIR) == "output" else ""
+fig.suptitle(f"Automatic AVHRR -> MODIS Geolocation Correction (bow-tie / panoramic distortion)"
+             + (f"\n{_gran}" if _gran else ""),
              fontsize=17, fontweight="bold", y=0.98)
 
 # Row 1: whole-scene before / after composite
@@ -139,9 +154,9 @@ axs.text(0.02, 0.98, txt, va="top", ha="left", fontsize=12.5, family="monospace"
 
 # Row 3: SW coast zoom before/after
 ax = fig.add_subplot(gs[2, 0:2]); ax.imshow(redcyan(acr, mcr))
-ax.set_title("SW coast (Karnataka/Kerala) BEFORE  [red=AVHRR, cyan=MODIS]", fontsize=11); ax.axis("off")
+ax.set_title("Coastline detail BEFORE  [red=AVHRR, cyan=MODIS]", fontsize=11); ax.axis("off")
 ax = fig.add_subplot(gs[2, 2:4]); ax.imshow(redcyan(ccr, mcr))
-ax.set_title("SW coast AFTER  (gray = aligned)", fontsize=11); ax.axis("off")
+ax.set_title("Coastline detail AFTER  (gray = aligned)", fontsize=11); ax.axis("off")
 
 plt.savefig(OUT, dpi=115, bbox_inches="tight")
 plt.close(fig)

@@ -2,11 +2,10 @@
 preprocessing.py
 ----------------
 
-Build the bow-tie pipeline's inputs directly from the RAW granule bands, so the
-pipeline no longer depends on the manual_registration folder.
+Build the bow-tie pipeline's inputs directly from the RAW granule bands. This is
+the only stage that reads the raw data; everything downstream uses inputs/.
 
-Reproduces the manual pipeline's Stage 1-3 (grid alignment, cloud mask, land
-masks):
+Stages (grid alignment, cloud mask, land masks):
   Stage 1 - resample AVHRR b2 (visible), b3a (SWIR), b4 (thermal) and MODIS
             onto ONE common 0.01deg grid snapped to the MODIS pixel origin.
   Stage 2 - thermal cloud mask (ch4 DN > 600 = cold cloud tops).
@@ -22,6 +21,7 @@ Run:  conda run -n geo python bowtie_coreg/preprocessing.py
 
 import os
 import math
+import argparse
 import numpy as np
 import cv2
 from osgeo import gdal
@@ -31,21 +31,13 @@ gdal.UseExceptions()
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_BASE)
 RAW = os.path.join(_ROOT, "Data", "psdd_metop", "metop")
-GRANULE = "hrpt_M03_20250506_0420_33701"
-
-AVHRR_B2 = os.path.join(RAW, GRANULE + "_geo_b2.tif")    # visible ch2  -> a_arr (warped)
-AVHRR_B3A = os.path.join(RAW, GRANULE + "_geo_b3a.tif")  # SWIR ch3a    -> s_arr (land mask)
-AVHRR_B4 = os.path.join(RAW, GRANULE + "_geo_b4.tif")    # thermal ch4  -> b4_arr (cloud)
-MODIS = os.path.join(RAW, "modis_1km.tif")               # reference    -> m_arr
-
-OUT = os.path.join(_BASE, "inputs")
 
 RES = 0.01           # common grid resolution (deg) = MODIS native
 CLOUD_DN = 600       # thermal DN above this = cloud
 OTSU_BAND = 400      # row-band height for latitude-banded Otsu
 
 
-def build_common_grid():
+def build_common_grid(AVHRR_B2, MODIS):
     """Snap the AVHRR footprint onto the MODIS pixel grid at RES (Stage 1)."""
     a = gdal.Open(AVHRR_B2)
     ga = a.GetGeoTransform()
@@ -101,10 +93,23 @@ def row_banded_otsu(arr, valid, band=OTSU_BAND):
 
 
 def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--granule", default="hrpt_M03_20250506_0420_33701",
+                   help="granule prefix in Data/psdd_metop/metop/ (without _geo_bN.tif)")
+    p.add_argument("--modis", default="modis_1km.tif")
+    p.add_argument("--out", default=os.path.join(_BASE, "inputs"),
+                   help="output inputs/ directory")
+    args = p.parse_args()
+
+    AVHRR_B2 = os.path.join(RAW, args.granule + "_geo_b2.tif")
+    AVHRR_B3A = os.path.join(RAW, args.granule + "_geo_b3a.tif")
+    AVHRR_B4 = os.path.join(RAW, args.granule + "_geo_b4.tif")
+    MODIS = os.path.join(RAW, args.modis)
+    OUT = args.out
     os.makedirs(OUT, exist_ok=True)
 
-    grid = build_common_grid()
-    print(f"Common grid: {grid['width']} x {grid['height']} @ {RES} deg, "
+    grid = build_common_grid(AVHRR_B2, MODIS)
+    print(f"[{args.granule}] Common grid: {grid['width']} x {grid['height']} @ {RES} deg, "
           f"origin ({grid['left']:.5f}, {grid['top']:.5f})")
 
     a_arr = resample(AVHRR_B2, grid, 0.0)      # AVHRR visible (0 = off-swath)
