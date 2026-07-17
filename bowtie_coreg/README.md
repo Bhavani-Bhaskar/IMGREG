@@ -24,8 +24,38 @@ conda run -n geo python bowtie_coreg/assemble_report.py   # 5. one-page report f
 
 Step 0 (`preprocessing.py`) reads the raw granule bands and writes the 7 input
 arrays to `inputs/`; run it once. Steps 1–5 then produce the corrected AVHRR and
-all report figures in `output/`. Expect ~105 matched tie points (+28 protection
-anchors), all NCC-validated.
+all report figures in `output/`.
+
+## Run on ANY / all granules (data-driven, no hardcoded regions)
+
+The pipeline is fully **data-driven** — there are no hardcoded region fixes, so
+it adapts to each granule's own clouds, coasts and swath geometry. To process
+every granule in `Data/psdd_metop/metop/` into its own folder + report:
+
+```bash
+conda run -n geo python bowtie_coreg/run_all_granules.py
+```
+
+This writes `bowtie_coreg/runs/<granule>/{inputs, output, output/report}` for
+each. For a single new granule:
+
+```bash
+G=hrpt_M03_20250507_0400_33715
+conda run -n geo python bowtie_coreg/preprocessing.py   --granule $G --out runs/$G/inputs
+conda run -n geo python bowtie_coreg/bowtie_pipeline.py --inputs runs/$G/inputs --output runs/$G/output
+conda run -n geo python bowtie_coreg/bowtie_report.py   --inputs runs/$G/inputs --output runs/$G/output
+```
+
+**How it stays general (no per-image tuning):** the correction is fit from the
+tie points, then multiplied by a data-driven **trust mask** (`build_trust_mask`)
+— full weight where the pixel is clear, on-swath and inside the tie-point hull;
+feathered to zero in cloudy / swath-edge / uncovered regions, which keep their
+original geolocation. So a region that is cloudy in one pass and clear in the
+next is protected in the first and corrected in the second, automatically.
+
+Each run's `output/report/ncc_validation.txt` gives self-referential validation:
+cloud-masked NCC (original → corrected) overall and per 3×3 spatial tile (there
+is no hand-picked ground truth for granules other than 33701_0506).
 
 ---
 
