@@ -1,0 +1,20 @@
+--- ORIGINAL (uncorrected) ---
+  +0.157  +0.281  +0.024
+  -0.010  +0.003  +0.022
+  -0.018  -0.008  +0.053
+  overall +0.1829   mean-tile +0.0559
+--- STAGE-1 TPS (features only) ---
+  +0.158  +0.281  +0.024
+  -0.011  +0.010  +0.017
+  -0.018  -0.005  +0.055
+  overall +0.1859   mean-tile +0.0568
+--- PARAMETRIC MODEL ONLY (bulk everywhere) ---
+  +0.132  +0.204  +0.087
+  +0.020  -0.006  -0.010
+  +0.068  -0.036  +0.004
+  overall +0.1647   mean-tile +0.0517
+--- HYBRID (model bulk + TPS residual) ---
+  +0.164  +0.280  +0.024
+  +0.019  +0.005  +0.016
+  -0.018  -0.003  +0.017
+  overall +0.1897   mean-tile +0.0559

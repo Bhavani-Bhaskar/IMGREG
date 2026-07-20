@@ -1,0 +1,685 @@
+(geo) bhaskar@bhaskar-Inspiron-16-5635:~/Documents/ImageReg$ python3 pipeline/main.py --all
+Pipeline root: /home/bhaskar/Documents/ImageReg/pipeline
+Raw data:      /home/bhaskar/Documents/ImageReg/Data/psdd_metop/metop
+Results ->     /home/bhaskar/Documents/ImageReg/pipeline/results
+Granules:      hrpt_M03_20250506_0420_33701, hrpt_M03_20250507_0400_33715, hrpt_M03_20250509_0320_33743, hrpt_M03_20250512_0356_33701
+
+######################################################################
+# GRANULE: hrpt_M03_20250506_0420_33701
+######################################################################
+
+>>> preprocess
+    $ preprocessing.py --granule hrpt_M03_20250506_0420_33701 --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs
+[hrpt_M03_20250506_0420_33701] Common grid: 3181 x 5086 @ 0.01 deg, origin (64.08889, 42.07418)
+Cloud fraction: 0.207  AVHRR land frac: 0.658  MODIS land frac: 0.215
+Saved 7 input arrays + grid.npz to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs
+    (curated ground truth found -> Stage-3 will GT-anchor)
+
+>>> Stage 1  NCC tie-points + TPS
+    $ bowtie_pipeline.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+
+============================================================
+TIE-POINT EXTRACTION (match -> west-infill -> grow -> curate)
+============================================================
+Dense matching: 79 candidates
+Permissive infill: +364 candidates (whole scene)
+  neighbour corroboration: 420/443 kept
+  iterative LOO curation: 397 points kept, LOO RMSE=5.9px median=1.2px
+  grow iter 1: +6 points (total 403)
+  grow iter 2: +0 points (total 403)
+Seed-and-grow: 403 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 164 candidates
+  neighbour corroboration: 147/164 kept
+  iterative LOO curation: 137 points kept, LOO RMSE=7.7px median=3.8px
+Local-median consistency: 126/137 points kept
+NCC validity filter: 118/126 points improve real alignment
+Structure-refine: adjusted 64/118 tie points on gradient imagery
+Auto-protect: dropped 1 cloud/edge matched points
+dx: mean=-53.2 (expect ~0)  min=-120.0 max=+94.0
+dy: mean=-12.0  min=-52.0 max=+42.0
+
+============================================================
+STAGE 6: TPS WARP
+============================================================
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_corrected.tif
+
+============================================================
+VALIDATION AGAINST MANUAL GROUND TRUTH
+============================================================
+(1) My TPS field vs their 66 curated displacements: RMSE=58.2px median=46.4px max=149.1px
+(2) My auto points near a curated point (92 of 117): shift agreement RMSE=29.4px
+(3) Bow-tie check - field mean dx by column band:
+    col[700-1000]: mean dx = +9.4
+    col[1000-1300]: mean dx = +11.5
+    col[1300-1600]: mean dx = -10.9
+    col[1600-1900]: mean dx = -27.7
+    col[1900-2600]: mean dx = -21.3
+
+>>> Stage 1  report
+    $ bowtie_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output
+Running full automatic tie-point extraction (match -> west-infill -> grow -> curate)...
+Dense matching: 79 candidates
+Permissive infill: +364 candidates (whole scene)
+  neighbour corroboration: 420/443 kept
+  iterative LOO curation: 397 points kept, LOO RMSE=5.9px median=1.2px
+  grow iter 1: +6 points (total 403)
+  grow iter 2: +0 points (total 403)
+Seed-and-grow: 403 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 164 candidates
+  neighbour corroboration: 147/164 kept
+  iterative LOO curation: 137 points kept, LOO RMSE=7.7px median=3.8px
+Local-median consistency: 126/137 points kept
+NCC validity filter: 118/126 points improve real alignment
+Structure-refine: adjusted 64/118 tie points on gradient imagery
+Auto-protect: dropped 1 cloud/edge matched points
+Extracted 117 matched tie points (+0 Gangetic protection anchors)
+
+Per-tie-point NCC validation (AVHRR shifted onto MODIS)...
+VALID tie points: 117/117 (mean NCC 0.117 -> 0.530)
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/tiepoint_vectors.png
+
+Building TPS warp for whole-scene overlay...
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_before_after.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/tiepoint_gallery.png
+Scene NCC: 0.019 -> 0.053 (54% windows improved) -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/ncc_validation.txt
+
+Report written to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/
+
+>>> Stage 1  overlay
+    $ visualize_overlay.py --original /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs/a_arr.npy --modis /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs/m_arr.npy --corrected /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_corrected.tif --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_original_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_shifted_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_compare.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_shifted_blend.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_redcyan_before.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/overlay_redcyan_after.png
+
+Done. Overlays in /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/
+
+>>> Stage 1  assemble report
+    $ assemble_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/report/report_page.png
+
+>>> Stage 2  phase-corr refinement
+    $ phasecorr_refine.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+
+============================================================
+STAGE 2: LOCAL PHASE-CORRELATION RESIDUAL REFINEMENT
+============================================================
+Phase-corr sweep: 82 residuals kept of 1177 textured windows
+Local-median consistency: 68/82 residuals kept
+NCC validity filter: 55/68 residuals improve alignment
+Surviving residuals: 55
+  |residual| mean=8.16px max=14.56px  dx[-14.0,+5.0] dy[-12.0,+4.0]
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_corrected_stage2.tif
+
+============================================================
+VALIDATION: STAGE 1 vs STAGE 2 (cloud-masked gradient NCC vs MODIS)
+============================================================
+--- STAGE 1 (avhrr_bowtie_corrected.tif) ---
+  +0.290  +0.269  +0.075
+  +0.015  +0.082  +0.144
+  -0.029  +0.046  +0.044
+  overall +0.1628   mean-tile +0.1039
+--- STAGE 2 (avhrr_bowtie_corrected_stage2.tif) ---
+  +0.290  +0.278  +0.109
+  +0.015  +0.089  +0.142
+  -0.029  +0.041  +0.044
+  overall +0.1716   mean-tile +0.1088
+
+DELTA  overall +0.0089   mean-tile +0.0049
+
+>>> Stage 3  panoramic model (final)
+    $ panoramic_model.py --granule hrpt_M03_20250506_0420_33701 --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+Loaded 117 Stage-1 auto tie points (trusted-zone TPS)
+
+============================================================
+PARAMETRIC PANORAMIC MODEL (scan-geometry, hybrid)
+============================================================
+Model anchored to: curated ground truth (66 pts)
+  model |shift| range in source: dx[-146,+119] dy[-68,+20]
+Scan geometry: 2025 samples/scan (nadir ~1012); grid sample range 24..2024
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_panoramic.tif
+  model bulk |shift|: mean=77.2px max=188.7px
+  on-swath area the model NEWLY corrects (trust<0.1): 61.7%
+
+============================================================
+VALIDATION: cloud-masked gradient NCC vs MODIS (measurable regions only)
+============================================================
+NOTE: NCC can only be measured on TEXTURED regions; the model's benefit
+is in FEATURE-LESS regions which cannot be scored. On measurable regions
+the hybrid should MATCH Stage-1 (no regression); model-only will be lower.
+--- ORIGINAL (uncorrected) ---
+  +0.289  +0.256  +0.042
+  -0.012  +0.037  +0.095
+  -0.029  +0.017  +0.044
+  overall +0.1433   mean-tile +0.0822
+--- STAGE-1 TPS (features only) ---
+  +0.281  +0.258  +0.091
+  +0.019  +0.078  +0.151
+  -0.029  +0.043  +0.044
+  overall +0.1629   mean-tile +0.1039
+--- PARAMETRIC MODEL ONLY (bulk everywhere) ---
+  +0.263  +0.270  +0.089
+  +0.052  +0.069  +0.146
+  -0.012  -0.006  +0.108
+  overall +0.1497   mean-tile +0.1087
+--- HYBRID (model bulk + TPS residual) ---
+  +0.277  +0.265  +0.099
+  +0.038  +0.074  +0.155
+  -0.028  +0.038  +0.080
+  overall +0.1581   mean-tile +0.1110
+
+######################################################################
+# GRANULE: hrpt_M03_20250507_0400_33715
+######################################################################
+
+>>> preprocess
+    $ preprocessing.py --granule hrpt_M03_20250507_0400_33715 --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs
+[hrpt_M03_20250507_0400_33715] Common grid: 3072 x 4663 @ 0.01 deg, origin (69.84889, 40.54418)
+Cloud fraction: 0.289  AVHRR land frac: 0.726  MODIS land frac: 0.266
+Saved 7 input arrays + grid.npz to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs
+
+>>> Stage 1  NCC tie-points + TPS
+    $ bowtie_pipeline.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output
+Loaded common-grid arrays (4663, 3072), grid origin (69.8489, 40.5442) @ 0.01 deg
+
+============================================================
+TIE-POINT EXTRACTION (match -> west-infill -> grow -> curate)
+============================================================
+Dense matching: 56 candidates
+Permissive infill: +264 candidates (whole scene)
+  neighbour corroboration: 290/320 kept
+  iterative LOO curation: 268 points kept, LOO RMSE=6.4px median=1.0px
+  grow iter 1: +5 points (total 273)
+  grow iter 2: +0 points (total 273)
+Seed-and-grow: 273 candidates
+Interior/North structure match: +0 NCC-valid candidates
+After dedup: 114 candidates
+  neighbour corroboration: 109/114 kept
+  iterative LOO curation: 93 points kept, LOO RMSE=8.6px median=4.5px
+Local-median consistency: 76/93 points kept
+NCC validity filter: 59/76 points improve real alignment
+Structure-refine: adjusted 18/59 tie points on gradient imagery
+Auto-protect: dropped 0 cloud/edge matched points
+dx: mean=+65.9 (expect ~0)  min=-77.0 max=+110.0
+dy: mean=+17.9  min=-22.0 max=+50.0
+
+============================================================
+STAGE 6: TPS WARP
+============================================================
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/avhrr_bowtie_corrected.tif
+
+============================================================
+VALIDATION AGAINST MANUAL GROUND TRUTH
+============================================================
+(no ground-truth tie points in inputs/ - skipping validation)
+
+>>> Stage 1  report
+    $ bowtie_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output
+Running full automatic tie-point extraction (match -> west-infill -> grow -> curate)...
+Dense matching: 56 candidates
+Permissive infill: +264 candidates (whole scene)
+  neighbour corroboration: 290/320 kept
+  iterative LOO curation: 268 points kept, LOO RMSE=6.4px median=1.0px
+  grow iter 1: +5 points (total 273)
+  grow iter 2: +0 points (total 273)
+Seed-and-grow: 273 candidates
+Interior/North structure match: +0 NCC-valid candidates
+After dedup: 114 candidates
+  neighbour corroboration: 109/114 kept
+  iterative LOO curation: 93 points kept, LOO RMSE=8.6px median=4.5px
+Local-median consistency: 76/93 points kept
+NCC validity filter: 59/76 points improve real alignment
+Structure-refine: adjusted 18/59 tie points on gradient imagery
+Auto-protect: dropped 0 cloud/edge matched points
+Extracted 59 matched tie points (+0 Gangetic protection anchors)
+
+Per-tie-point NCC validation (AVHRR shifted onto MODIS)...
+VALID tie points: 59/59 (mean NCC 0.127 -> 0.556)
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/tiepoint_vectors.png
+
+Building TPS warp for whole-scene overlay...
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_before_after.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/tiepoint_gallery.png
+Scene NCC: 0.016 -> 0.034 (53% windows improved) -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/ncc_validation.txt
+
+Report written to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/
+
+>>> Stage 1  overlay
+    $ visualize_overlay.py --original /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs/a_arr.npy --modis /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs/m_arr.npy --corrected /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/avhrr_bowtie_corrected.tif --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_original_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_shifted_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_compare.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_shifted_blend.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_redcyan_before.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/overlay_redcyan_after.png
+
+Done. Overlays in /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/
+
+>>> Stage 1  assemble report
+    $ assemble_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/report/report_page.png
+
+>>> Stage 2  phase-corr refinement
+    $ phasecorr_refine.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output
+Loaded common-grid arrays (4663, 3072), grid origin (69.8489, 40.5442) @ 0.01 deg
+
+============================================================
+STAGE 2: LOCAL PHASE-CORRELATION RESIDUAL REFINEMENT
+============================================================
+Phase-corr sweep: 29 residuals kept of 987 textured windows
+Local-median consistency: 21/29 residuals kept
+NCC validity filter: 20/21 residuals improve alignment
+Surviving residuals: 20
+  |residual| mean=9.04px max=13.34px  dx[-13.0,+9.0] dy[-1.0,+11.0]
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/avhrr_bowtie_corrected_stage2.tif
+
+============================================================
+VALIDATION: STAGE 1 vs STAGE 2 (cloud-masked gradient NCC vs MODIS)
+============================================================
+--- STAGE 1 (avhrr_bowtie_corrected.tif) ---
+  +0.307  +0.188  +0.044
+  -0.023  +0.100  +0.111
+  -0.039  +0.081  +0.012
+  overall +0.1751   mean-tile +0.0866
+--- STAGE 2 (avhrr_bowtie_corrected_stage2.tif) ---
+  +0.305  +0.189  +0.044
+  -0.023  +0.108  +0.111
+  -0.040  +0.078  +0.012
+  overall +0.1752   mean-tile +0.0871
+
+DELTA  overall +0.0001   mean-tile +0.0005
+
+>>> Stage 3  panoramic model (final)
+    $ panoramic_model.py --granule hrpt_M03_20250507_0400_33715 --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output
+Loaded common-grid arrays (4663, 3072), grid origin (69.8489, 40.5442) @ 0.01 deg
+Loaded 59 Stage-1 auto tie points (trusted-zone TPS)
+
+============================================================
+PARAMETRIC PANORAMIC MODEL (scan-geometry, hybrid)
+============================================================
+Model anchored to: auto tie points (59 pts) - no curated GT for this granule
+  model |shift| range in source: dx[-77,+110] dy[-22,+50]
+Scan geometry: 2025 samples/scan (nadir ~1012); grid sample range 24..2024
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/avhrr_bowtie_panoramic.tif
+  model bulk |shift|: mean=111.8px max=154.4px
+  on-swath area the model NEWLY corrects (trust<0.1): 91.0%
+
+============================================================
+VALIDATION: cloud-masked gradient NCC vs MODIS (measurable regions only)
+============================================================
+NOTE: NCC can only be measured on TEXTURED regions; the model's benefit
+is in FEATURE-LESS regions which cannot be scored. On measurable regions
+the hybrid should MATCH Stage-1 (no regression); model-only will be lower.
+--- ORIGINAL (uncorrected) ---
+  +0.307  +0.188  +0.044
+  -0.021  +0.077  +0.111
+  -0.024  +0.078  +0.012
+  overall +0.1703   mean-tile +0.0856
+--- STAGE-1 TPS (features only) ---
+  +0.307  +0.188  +0.044
+  -0.020  +0.099  +0.111
+  -0.037  +0.082  +0.012
+  overall +0.1739   mean-tile +0.0873
+--- PARAMETRIC MODEL ONLY (bulk everywhere) ---
+  +0.245  +0.139  +0.016
+  +0.005  +0.063  +0.056
+  -0.089  +0.042  -0.084
+  overall +0.1516   mean-tile +0.0437
+--- HYBRID (model bulk + TPS residual) ---
+  +0.307  +0.189  +0.044
+  +0.006  +0.104  +0.111
+  -0.033  +0.060  +0.012
+  overall +0.1776   mean-tile +0.0887
+
+######################################################################
+# GRANULE: hrpt_M03_20250509_0320_33743
+######################################################################
+
+>>> preprocess
+    $ preprocessing.py --granule hrpt_M03_20250509_0320_33743 --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs
+[hrpt_M03_20250509_0320_33743] Common grid: 2776 x 3715 @ 0.01 deg, origin (80.70889, 33.75418)
+Cloud fraction: 0.249  AVHRR land frac: 0.623  MODIS land frac: 0.338
+Saved 7 input arrays + grid.npz to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs
+
+>>> Stage 1  NCC tie-points + TPS
+    $ bowtie_pipeline.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output
+Loaded common-grid arrays (3715, 2776), grid origin (80.7089, 33.7542) @ 0.01 deg
+
+============================================================
+TIE-POINT EXTRACTION (match -> west-infill -> grow -> curate)
+============================================================
+Dense matching: 43 candidates
+Permissive infill: +252 candidates (whole scene)
+  neighbour corroboration: 260/295 kept
+  iterative LOO curation: 214 points kept, LOO RMSE=7.9px median=1.9px
+  grow iter 1: +1 points (total 215)
+  grow iter 2: +0 points (total 215)
+Seed-and-grow: 215 candidates
+Interior/North structure match: +2 NCC-valid candidates
+After dedup: 91 candidates
+  neighbour corroboration: 71/91 kept
+  iterative LOO curation: 62 points kept, LOO RMSE=10.1px median=6.8px
+Local-median consistency: 50/62 points kept
+NCC validity filter: 43/50 points improve real alignment
+Structure-refine: adjusted 16/43 tie points on gradient imagery
+Auto-protect: dropped 2 cloud/edge matched points
+dx: mean=-0.2 (expect ~0)  min=-99.0 max=+122.0
+dy: mean=+2.2  min=-44.0 max=+65.0
+
+============================================================
+STAGE 6: TPS WARP
+============================================================
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/avhrr_bowtie_corrected.tif
+
+============================================================
+VALIDATION AGAINST MANUAL GROUND TRUTH
+============================================================
+(no ground-truth tie points in inputs/ - skipping validation)
+
+>>> Stage 1  report
+    $ bowtie_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output
+Running full automatic tie-point extraction (match -> west-infill -> grow -> curate)...
+Dense matching: 43 candidates
+Permissive infill: +252 candidates (whole scene)
+  neighbour corroboration: 260/295 kept
+  iterative LOO curation: 214 points kept, LOO RMSE=7.9px median=1.9px
+  grow iter 1: +1 points (total 215)
+  grow iter 2: +0 points (total 215)
+Seed-and-grow: 215 candidates
+Interior/North structure match: +2 NCC-valid candidates
+After dedup: 91 candidates
+  neighbour corroboration: 71/91 kept
+  iterative LOO curation: 62 points kept, LOO RMSE=10.1px median=6.8px
+Local-median consistency: 50/62 points kept
+NCC validity filter: 43/50 points improve real alignment
+Structure-refine: adjusted 16/43 tie points on gradient imagery
+Auto-protect: dropped 2 cloud/edge matched points
+Extracted 41 matched tie points (+0 Gangetic protection anchors)
+
+Per-tie-point NCC validation (AVHRR shifted onto MODIS)...
+VALID tie points: 40/41 (mean NCC 0.295 -> 0.577)
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/tiepoint_vectors.png
+
+Building TPS warp for whole-scene overlay...
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_before_after.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/tiepoint_gallery.png
+Scene NCC: 0.024 -> 0.027 (52% windows improved) -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/ncc_validation.txt
+
+Report written to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/
+
+>>> Stage 1  overlay
+    $ visualize_overlay.py --original /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs/a_arr.npy --modis /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs/m_arr.npy --corrected /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/avhrr_bowtie_corrected.tif --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_original_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_shifted_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_compare.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_shifted_blend.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_redcyan_before.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/overlay_redcyan_after.png
+
+Done. Overlays in /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/
+
+>>> Stage 1  assemble report
+    $ assemble_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/report/report_page.png
+
+>>> Stage 2  phase-corr refinement
+    $ phasecorr_refine.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output
+Loaded common-grid arrays (3715, 2776), grid origin (80.7089, 33.7542) @ 0.01 deg
+
+============================================================
+STAGE 2: LOCAL PHASE-CORRELATION RESIDUAL REFINEMENT
+============================================================
+Phase-corr sweep: 9 residuals kept of 905 textured windows
+Local-median consistency: 1/9 residuals kept
+NCC validity filter: 1/1 residuals improve alignment
+Surviving residuals: 1
+  |residual| mean=10.82px max=10.82px  dx[-6.0,-6.0] dy[+9.0,+9.0]
+Too few residuals to fit a Stage-2 field; Stage 1 kept as final.
+
+>>> Stage 3  panoramic model (final)
+    $ panoramic_model.py --granule hrpt_M03_20250509_0320_33743 --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output
+Loaded common-grid arrays (3715, 2776), grid origin (80.7089, 33.7542) @ 0.01 deg
+Loaded 41 Stage-1 auto tie points (trusted-zone TPS)
+
+============================================================
+PARAMETRIC PANORAMIC MODEL (scan-geometry, hybrid)
+============================================================
+Model anchored to: auto tie points (41 pts) - no curated GT for this granule
+  model |shift| range in source: dx[-99,+122] dy[-44,+65]
+Scan geometry: 2025 samples/scan (nadir ~1012); grid sample range 24..2024
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/avhrr_bowtie_panoramic.tif
+  model bulk |shift|: mean=126.4px max=172.4px
+  on-swath area the model NEWLY corrects (trust<0.1): 84.0%
+
+============================================================
+VALIDATION: cloud-masked gradient NCC vs MODIS (measurable regions only)
+============================================================
+NOTE: NCC can only be measured on TEXTURED regions; the model's benefit
+is in FEATURE-LESS regions which cannot be scored. On measurable regions
+the hybrid should MATCH Stage-1 (no regression); model-only will be lower.
+--- ORIGINAL (uncorrected) ---
+  +0.157  +0.281  +0.024
+  -0.010  +0.003  +0.022
+  -0.018  -0.008  +0.053
+  overall +0.1829   mean-tile +0.0559
+--- STAGE-1 TPS (features only) ---
+  +0.158  +0.281  +0.024
+  -0.011  +0.010  +0.017
+  -0.018  -0.005  +0.055
+  overall +0.1859   mean-tile +0.0568
+--- PARAMETRIC MODEL ONLY (bulk everywhere) ---
+  +0.132  +0.204  +0.087
+  +0.020  -0.006  -0.010
+  +0.068  -0.036  +0.004
+  overall +0.1647   mean-tile +0.0517
+--- HYBRID (model bulk + TPS residual) ---
+  +0.164  +0.280  +0.024
+  +0.019  +0.005  +0.016
+  -0.018  -0.003  +0.017
+  overall +0.1897   mean-tile +0.0559
+
+######################################################################
+# GRANULE: hrpt_M03_20250512_0356_33701
+######################################################################
+
+>>> preprocess
+    $ preprocessing.py --granule hrpt_M03_20250512_0356_33701 --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs
+[hrpt_M03_20250512_0356_33701] Common grid: 3181 x 5086 @ 0.01 deg, origin (64.08889, 42.07418)
+Cloud fraction: 0.207  AVHRR land frac: 0.658  MODIS land frac: 0.215
+Saved 7 input arrays + grid.npz to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs
+    (curated ground truth found -> Stage-3 will GT-anchor)
+
+>>> Stage 1  NCC tie-points + TPS
+    $ bowtie_pipeline.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+
+============================================================
+TIE-POINT EXTRACTION (match -> west-infill -> grow -> curate)
+============================================================
+Dense matching: 79 candidates
+Permissive infill: +364 candidates (whole scene)
+  neighbour corroboration: 420/443 kept
+  iterative LOO curation: 397 points kept, LOO RMSE=5.9px median=1.2px
+  grow iter 1: +6 points (total 403)
+  grow iter 2: +0 points (total 403)
+Seed-and-grow: 403 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 164 candidates
+  neighbour corroboration: 147/164 kept
+  iterative LOO curation: 137 points kept, LOO RMSE=7.7px median=3.8px
+Local-median consistency: 126/137 points kept
+NCC validity filter: 118/126 points improve real alignment
+Structure-refine: adjusted 64/118 tie points on gradient imagery
+Auto-protect: dropped 1 cloud/edge matched points
+dx: mean=-53.2 (expect ~0)  min=-120.0 max=+94.0
+dy: mean=-12.0  min=-52.0 max=+42.0
+
+============================================================
+STAGE 6: TPS WARP
+============================================================
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/avhrr_bowtie_corrected.tif
+
+============================================================
+VALIDATION AGAINST MANUAL GROUND TRUTH
+============================================================
+(1) My TPS field vs their 66 curated displacements: RMSE=58.2px median=46.4px max=149.1px
+(2) My auto points near a curated point (92 of 117): shift agreement RMSE=29.4px
+(3) Bow-tie check - field mean dx by column band:
+    col[700-1000]: mean dx = +9.4
+    col[1000-1300]: mean dx = +11.5
+    col[1300-1600]: mean dx = -10.9
+    col[1600-1900]: mean dx = -27.7
+    col[1900-2600]: mean dx = -21.3
+
+>>> Stage 1  report
+    $ bowtie_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output
+Running full automatic tie-point extraction (match -> west-infill -> grow -> curate)...
+Dense matching: 79 candidates
+Permissive infill: +364 candidates (whole scene)
+  neighbour corroboration: 420/443 kept
+  iterative LOO curation: 397 points kept, LOO RMSE=5.9px median=1.2px
+  grow iter 1: +6 points (total 403)
+  grow iter 2: +0 points (total 403)
+Seed-and-grow: 403 candidates
+Interior/North structure match: +15 NCC-valid candidates
+After dedup: 164 candidates
+  neighbour corroboration: 147/164 kept
+  iterative LOO curation: 137 points kept, LOO RMSE=7.7px median=3.8px
+Local-median consistency: 126/137 points kept
+NCC validity filter: 118/126 points improve real alignment
+Structure-refine: adjusted 64/118 tie points on gradient imagery
+Auto-protect: dropped 1 cloud/edge matched points
+Extracted 117 matched tie points (+0 Gangetic protection anchors)
+
+Per-tie-point NCC validation (AVHRR shifted onto MODIS)...
+VALID tie points: 117/117 (mean NCC 0.117 -> 0.530)
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/tiepoint_vectors.png
+
+Building TPS warp for whole-scene overlay...
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_before_after.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/tiepoint_gallery.png
+Scene NCC: 0.019 -> 0.053 (54% windows improved) -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/ncc_validation.txt
+
+Report written to /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/
+
+>>> Stage 1  overlay
+    $ visualize_overlay.py --original /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs/a_arr.npy --modis /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs/m_arr.npy --corrected /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/avhrr_bowtie_corrected.tif --out /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_original_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_shifted_on_modis.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_compare.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_shifted_blend.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_redcyan_before.png
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/overlay_redcyan_after.png
+
+Done. Overlays in /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/
+
+>>> Stage 1  assemble report
+    $ assemble_report.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output
+Saved /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/report/report_page.png
+
+>>> Stage 2  phase-corr refinement
+    $ phasecorr_refine.py --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+
+============================================================
+STAGE 2: LOCAL PHASE-CORRELATION RESIDUAL REFINEMENT
+============================================================
+Phase-corr sweep: 82 residuals kept of 1177 textured windows
+Local-median consistency: 68/82 residuals kept
+NCC validity filter: 55/68 residuals improve alignment
+Surviving residuals: 55
+  |residual| mean=8.16px max=14.56px  dx[-14.0,+5.0] dy[-12.0,+4.0]
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/avhrr_bowtie_corrected_stage2.tif
+
+============================================================
+VALIDATION: STAGE 1 vs STAGE 2 (cloud-masked gradient NCC vs MODIS)
+============================================================
+--- STAGE 1 (avhrr_bowtie_corrected.tif) ---
+  +0.290  +0.269  +0.075
+  +0.015  +0.082  +0.144
+  -0.029  +0.046  +0.044
+  overall +0.1628   mean-tile +0.1039
+--- STAGE 2 (avhrr_bowtie_corrected_stage2.tif) ---
+  +0.290  +0.278  +0.109
+  +0.015  +0.089  +0.142
+  -0.029  +0.041  +0.044
+  overall +0.1716   mean-tile +0.1088
+
+DELTA  overall +0.0089   mean-tile +0.0049
+
+>>> Stage 3  panoramic model (final)
+    $ panoramic_model.py --granule hrpt_M03_20250512_0356_33701 --inputs /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/inputs --output /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output
+Loaded common-grid arrays (5086, 3181), grid origin (64.0889, 42.0742) @ 0.01 deg
+Loaded 117 Stage-1 auto tie points (trusted-zone TPS)
+
+============================================================
+PARAMETRIC PANORAMIC MODEL (scan-geometry, hybrid)
+============================================================
+Model anchored to: curated ground truth (66 pts)
+  model |shift| range in source: dx[-146,+119] dy[-68,+20]
+Scan geometry: 2025 samples/scan (nadir ~1012); grid sample range 24..2024
+Wrote /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/avhrr_bowtie_panoramic.tif
+  model bulk |shift|: mean=77.2px max=188.7px
+  on-swath area the model NEWLY corrects (trust<0.1): 61.7%
+
+============================================================
+VALIDATION: cloud-masked gradient NCC vs MODIS (measurable regions only)
+============================================================
+NOTE: NCC can only be measured on TEXTURED regions; the model's benefit
+is in FEATURE-LESS regions which cannot be scored. On measurable regions
+the hybrid should MATCH Stage-1 (no regression); model-only will be lower.
+--- ORIGINAL (uncorrected) ---
+  +0.289  +0.256  +0.042
+  -0.012  +0.037  +0.095
+  -0.029  +0.017  +0.044
+  overall +0.1433   mean-tile +0.0822
+--- STAGE-1 TPS (features only) ---
+  +0.281  +0.258  +0.091
+  +0.019  +0.078  +0.151
+  -0.029  +0.043  +0.044
+  overall +0.1629   mean-tile +0.1039
+--- PARAMETRIC MODEL ONLY (bulk everywhere) ---
+  +0.263  +0.270  +0.089
+  +0.052  +0.069  +0.146
+  -0.012  -0.006  +0.108
+  overall +0.1497   mean-tile +0.1087
+--- HYBRID (model bulk + TPS residual) ---
+  +0.277  +0.265  +0.099
+  +0.038  +0.074  +0.155
+  -0.028  +0.038  +0.080
+  overall +0.1581   mean-tile +0.1110
+
+======================================================================
+PIPELINE SUMMARY  (final product = output/avhrr_bowtie_panoramic.tif)
+======================================================================
+
+hrpt_M03_20250506_0420_33701
+    Stage 1: overall mean NCC: 0.019 -> 0.053  (delta +0.035, improved 54%)
+    Stage 2: DELTA  overall +0.0089   mean-tile +0.0049
+    Stage 3: overall +0.1581   mean-tile +0.1110  (hybrid, cloud-masked gradient NCC vs MODIS)
+    final -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_panoramic.tif
+
+hrpt_M03_20250507_0400_33715
+    Stage 1: overall mean NCC: 0.016 -> 0.034  (delta +0.018, improved 53%)
+    Stage 2: DELTA  overall +0.0001   mean-tile +0.0005
+    Stage 3: overall +0.1776   mean-tile +0.0887  (hybrid, cloud-masked gradient NCC vs MODIS)
+    final -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250507_0400_33715/output/avhrr_bowtie_panoramic.tif
+
+hrpt_M03_20250509_0320_33743
+    Stage 1: overall mean NCC: 0.024 -> 0.027  (delta +0.004, improved 52%)
+    Stage 2: 
+    Stage 3: overall +0.1897   mean-tile +0.0559  (hybrid, cloud-masked gradient NCC vs MODIS)
+    final -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250509_0320_33743/output/avhrr_bowtie_panoramic.tif
+
+hrpt_M03_20250512_0356_33701
+    Stage 1: overall mean NCC: 0.019 -> 0.053  (delta +0.035, improved 54%)
+    Stage 2: DELTA  overall +0.0089   mean-tile +0.0049
+    Stage 3: overall +0.1581   mean-tile +0.1110  (hybrid, cloud-masked gradient NCC vs MODIS)
+    final -> /home/bhaskar/Documents/ImageReg/pipeline/results/hrpt_M03_20250512_0356_33701/output/avhrr_bowtie_panoramic.tif

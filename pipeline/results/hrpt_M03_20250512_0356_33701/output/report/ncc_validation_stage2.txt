@@ -1,0 +1,12 @@
+--- STAGE 1 (avhrr_bowtie_corrected.tif) ---
+  +0.290  +0.269  +0.075
+  +0.015  +0.082  +0.144
+  -0.029  +0.046  +0.044
+  overall +0.1628   mean-tile +0.1039
+--- STAGE 2 (avhrr_bowtie_corrected_stage2.tif) ---
+  +0.290  +0.278  +0.109
+  +0.015  +0.089  +0.142
+  -0.029  +0.041  +0.044
+  overall +0.1716   mean-tile +0.1088
+
+DELTA  overall +0.0089   mean-tile +0.0049
