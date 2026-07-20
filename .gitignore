@@ -9,3 +9,4 @@ stage5_phase_correlation/
 *.pkl
 phasecorr_output/
 my_project/*
+*.npz
