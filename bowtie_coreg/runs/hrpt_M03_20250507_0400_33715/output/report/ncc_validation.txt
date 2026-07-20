@@ -1,14 +1,14 @@
 SELF-REFERENTIAL VALIDATION (cloud-masked NCC vs MODIS, original -> corrected)
 checkpoint windows: 554
-overall mean NCC: 0.016 -> 0.033  (delta +0.016, improved 53%)
+overall mean NCC: 0.016 -> 0.034  (delta +0.018, improved 53%)
 
 by 3x3 spatial tile (row-band x col-band):
   tile[0,0] n= 53  -0.007 -> -0.007  (-0.000)
   tile[0,1] n=121  0.005 -> 0.005  (+0.000)
   tile[0,2] n= 39  0.032 -> 0.032  (-0.000)
-  tile[1,0] n= 90  0.004 -> 0.035  (+0.031)
-  tile[1,1] n=140  0.022 -> 0.060  (+0.038)
+  tile[1,0] n= 90  0.004 -> 0.036  (+0.032)
+  tile[1,1] n=140  0.022 -> 0.063  (+0.041)
   tile[1,2] n= 47  0.028 -> 0.028  (+0.000)
-  tile[2,0] n= 33  0.004 -> 0.021  (+0.017)
-  tile[2,1] n= 30  0.090 -> 0.105  (+0.015)
+  tile[2,0] n= 33  0.004 -> 0.024  (+0.020)
+  tile[2,1] n= 30  0.090 -> 0.109  (+0.019)
   tile[2,2] n=  1  0.045 -> 0.045  (+0.000)

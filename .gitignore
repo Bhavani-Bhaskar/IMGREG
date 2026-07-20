@@ -2,6 +2,10 @@ Data/
 __pycache__/
 2_outputs/
 34_outputs/
-gallery/
 stage5_phase_correlation/
-modifications.txt
+*.tif
+*.xml
+*.npy
+*.pkl
+phasecorr_output/
+my_project/*

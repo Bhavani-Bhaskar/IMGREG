@@ -47,8 +47,8 @@ def autoscale(img, max_width=1200, max_height=800):
 #avhrr_file="/data/student_project_imreg/codes/scripts/combined_bad_mask.tif"
 #modis_file="/data/student_project_imreg/metop_work/hrpt_M03_20250506_0420_33701_geo_b2.tif"
 
-avhrr_file="/home/bhaskar/Documents/ImageReg/arosics_orig/modis_1km.tif"
-modis_file="/home/bhaskar/Documents/ImageReg/arosics_orig/modis_1km_oceanmask.tif"
+avhrr_file="/home/bhaskar/Documents/ImageReg/bowtie_coreg/output/panoramic_model_dx.tif"
+modis_file="/home/bhaskar/Documents/ImageReg/bowtie_coreg/output/panoramic_model_dy.tif"
 
 # -------------------------
 # Read images

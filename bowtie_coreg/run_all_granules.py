@@ -63,6 +63,19 @@ def main():
              "--out", os.path.join(out, "report")])
         run([PY, "assemble_report.py", "--inputs", inp, "--output", out])
 
+        # Stage 2: local phase-correlation residual refinement on the Stage-1
+        # corrected output (writes avhrr_bowtie_corrected_stage2.tif +
+        # report/ncc_validation_stage2.txt).
+        run([PY, "phasecorr_refine.py", "--inputs", inp, "--output", out])
+
+        # Stage 3 (DEFAULT OUTPUT): parametric panoramic model, hybrid-blended
+        # with the tie-point TPS. Extends a physical correction into the cloud /
+        # featureless regions the tie-point stages leave uncorrected. Anchored to
+        # curated ground truth if present in inputs/, else the auto tie points.
+        # Writes avhrr_bowtie_panoramic.tif (the recommended final product) +
+        # report/ncc_validation_panoramic.txt.
+        run([PY, "panoramic_model.py", "--granule", g, "--inputs", inp, "--output", out])
+
         # pull the headline NCC line from the validation file
         vf = os.path.join(out, "report", "ncc_validation.txt")
         head = ""
@@ -70,7 +83,21 @@ def main():
             for ln in open(vf):
                 if ln.startswith("overall mean NCC"):
                     head = ln.strip(); break
-        summary.append((g, head or "done"))
+        # pull the Stage-1 vs Stage-2 delta line
+        s2f = os.path.join(out, "report", "ncc_validation_stage2.txt")
+        s2 = ""
+        if os.path.exists(s2f):
+            for ln in open(s2f):
+                if ln.startswith("DELTA"):
+                    s2 = "stage2 " + ln.strip(); break
+        # pull the panoramic HYBRID overall NCC (last 'overall' line in the file)
+        pf = os.path.join(out, "report", "ncc_validation_panoramic.txt")
+        pano = ""
+        if os.path.exists(pf):
+            for ln in open(pf):
+                if ln.strip().startswith("overall"):
+                    pano = "panoramic-hybrid " + ln.strip()
+        summary.append((g, "  ".join(x for x in (head or "done", s2, pano) if x)))
 
     print("\n" + "=" * 70)
     print("BATCH SUMMARY")

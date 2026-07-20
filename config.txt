@@ -71,3 +71,51 @@ min_valid_fraction = 0.5
 
 # Step 20 - reliability (AROSICS Eq. 6, default reject R < 30)
 reliability_threshold = 30.0
+
+[Version 2]
+
+# Stage 3 through 11 delegated to the real AROSICS package
+# (github.com/GFZ/arosics, COREG_LOCAL) instead of the
+# hand-rolled window_selection/ + local_registration/ modules.
+# Stage 1-2 preprocessing is unchanged.
+#
+# window_size/grid_res were tuned empirically: window=256 gave 7
+# valid tie points, window=150 gave 18, window=64 (dense grid_res
+# =32) gave 678 candidates while still retaining genuine large
+# (>1px) detected shifts - smaller windows than this start losing
+# the signal needed to detect real distortion at all.
+window_size = 64
+
+# tie point grid spacing in pixels of the target (AVHRR) image
+grid_res = 32
+
+# max allowed shift in reference-image pixels
+max_shift = 100
+
+max_iterations = 5
+
+# tie point filtering: 0=none, 1=+reliability, 2=+SSIM, 3=+RANSAC
+tiep_filter_level = 3
+
+# AROSICS' reliability score (same Eq. 6 formula as v1's own
+# reliability_estimator.py) is poorly calibrated for this
+# cross-sensor (AVHRR DN vs MODIS reflectance) pair - most
+# genuinely-good tie points still score 0. Effectively disabled;
+# quality control now comes from SSIM (level 2), RANSAC (level 3),
+# and our own independent NCC verification below.
+min_reliability = 0
+
+# reused from Stage 3's MODIS-signal-content finding, to build
+# COREG_LOCAL's mask_baddata_ref
+modis_dark_threshold = 0.01
+
+# Independent NCC verification: a tie point claiming a shift of at
+# least this many pixels must also show independently-computed NCC
+# improvement to be accepted (catches the ~31% of AROSICS
+# "valid"-flagged large-shift points that don't hold up - verified
+# empirically). Points below this shift are kept as "already
+# aligned" anchors without requiring NCC improvement, since NCC
+# barely moves for a sub-pixel correction by construction.
+ncc_min_shift_px = 1.0
+
+output_root = stage_v2

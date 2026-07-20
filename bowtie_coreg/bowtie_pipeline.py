@@ -137,6 +137,17 @@ IM_GAUSS = 1.5
 #   - EXTRAPOLATED: farther than AP_FAR_PX from any verified tie point
 # This generalises to any granule: on a cloud-free pass the same region is NOT
 # protected and gets corrected normally.
+# Structure refinement: after binary-coastline matching, refine every tie point
+# with a small local search on the GRADIENT (edge) imagery. Binary-silhouette
+# matching locks isolated landmasses (e.g. an island) to one compromise
+# translation and misses within-feature STRETCH; the gradient search recovers
+# the local shift, capturing the bow-tie gradient across such features. General
+# (applies everywhere, no hardcoded region).
+REFINE_STRUCTURE = True
+REF_SEARCH = 28        # +/- local search radius (px)
+REF_TILE = 80          # refinement window (px)
+REF_MIN_SCORE = 0.30   # only accept a confident gradient match
+
 AUTO_PROTECT = True
 AP_WIN = 80            # half-window for local cloud/valid stats
 AP_CLEAR_MIN = 0.55    # local clear-sky fraction below this -> not trusted (cloudy)
@@ -703,6 +714,39 @@ def fit_tps_field(ta, off, W, H):
     return dxf, dyf
 
 
+def refine_tie_points(ta, off, a_arr, m_arr, verbose=True):
+    """Refine each tie point's shift with a small local search on the gradient
+    (edge) imagery. Breaks the binary-silhouette compromise so within-feature
+    stretch (e.g. across an isolated island) is captured. General - no region."""
+    sv = a_arr > 0
+    mv = np.isfinite(m_arr) & (m_arr > 0)
+    a_st = gradient_structure(a_arr, sv)
+    m_st = gradient_structure(m_arr, mv)
+    H, W = a_arr.shape
+    half, R = REF_TILE // 2, REF_SEARCH
+    new = off.copy().astype(float)
+    n = 0
+    for i, ((sx, sy), (dx, dy)) in enumerate(zip(ta, off)):
+        sx, sy = int(sx), int(sy)
+        dxi, dyi = int(round(dx)), int(round(dy))
+        if not (half <= sy < H - half and half <= sx < W - half):
+            continue
+        r0, c0 = sy + dyi - R - half, sx + dxi - R - half
+        if r0 < 0 or c0 < 0 or r0 + REF_TILE + 2 * R > H or c0 + REF_TILE + 2 * R > W:
+            continue
+        t = a_st[sy - half:sy + half, sx - half:sx + half]
+        res = cv2.matchTemplate(m_st[r0:r0 + REF_TILE + 2 * R, c0:c0 + REF_TILE + 2 * R],
+                                t, cv2.TM_CCOEFF_NORMED)
+        _, score, _, ml = cv2.minMaxLoc(res)
+        if score < REF_MIN_SCORE:
+            continue
+        new[i] = [dxi + (ml[0] - R), dyi + (ml[1] - R)]
+        n += 1
+    if verbose:
+        print(f"Structure-refine: adjusted {n}/{len(ta)} tie points on gradient imagery")
+    return new
+
+
 def build_shift_field(ta, off, arrays):
     """Fit the TPS field from the tie points and (if enabled) multiply by the
     data-driven trust mask so cloudy / swath-edge / extrapolated regions keep
@@ -938,6 +982,14 @@ def extract_tie_points(arrays, verbose=True):
     if verbose:
         print(f"NCC validity filter: {keep.sum()}/{len(ta)} points improve real alignment")
     ta, off, sc = ta[keep], off[keep], sc[keep]
+
+    if REFINE_STRUCTURE and len(ta):
+        a32, m32 = arrays["a_arr"].astype(np.float32), arrays["m_arr"].astype(np.float32)
+        off_ref = refine_tie_points(ta, off, a32, m32, verbose=verbose)
+        # keep a refinement only if it still passes the real-image NCC gate;
+        # otherwise fall back to the original (safe) shift for that point
+        keep_ref = ncc_valid_mask(ta, off_ref, a32, m32, clear=clear)
+        off = np.where(keep_ref[:, None], off_ref, off)
 
     if AUTO_PROTECT:
         ta, off, sc = auto_protect_drop(ta, off, sc, arrays, verbose=verbose)

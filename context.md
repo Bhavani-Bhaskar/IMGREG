@@ -400,3 +400,128 @@ Corrected AVHRR GeoTIFF, resampled onto the MODIS grid (per Stage 10 Option B), 
 44. mean/σ
 45. tie-point count/density/mean reliability
 46. processing time → Final Report
+
+# AVHRR → MODIS Geolocation Correction — Session Handoff & Next Plan
+
+## Context (read this first in the next chat)
+
+Correcting MetOp-C **AVHRR** panoramic / **bow-tie** geolocation distortion against a
+**MODIS 1 km** reference. The error is NOT a global shift (mean dx ≈ 0) — it is a
+smooth across-track (bow-tie) distortion: swath width preserved at nadir, shrinking
+toward the top & bottom of the scene, |shift| up to ~150 px (~165 km) at the edges.
+
+Everything lives in **`bowtie_coreg/`** and is **fully data-driven** (no hardcoded
+regions) — it runs on any MetOp AVHRR granule. Run with the **`geo`** conda env
+(has scikit-image, scikit-image `phase_cross_correlation`, GDAL, OpenCV, scipy).
+IMPORTANT: launch via `conda run -n geo python ...` (not the bare env python) or
+GeoTIFF writes fail — PROJ_DATA env is only set by conda run. `conda` is sometimes
+not on PATH: use `/home/bhaskar/miniconda3/bin/conda run -n geo python`.
+
+## What we built this session (the Stage-1 NCC pipeline — DONE, working)
+
+Pipeline = binary-coastline NCC template matching (NOT phase correlation) + curation
++ Thin-Plate-Spline warp, made general and self-contained. Files in `bowtie_coreg/`:
+
+- **`preprocessing.py`** — raw granule bands → common 0.01° grid arrays in `inputs/`.
+  Reads `Data/psdd_metop/metop/<granule>_geo_b2/b3a/b4.tif` + `modis_1km.tif`.
+  b2=visible (warped target), b3a=SWIR (land mask), b4=thermal (cloud mask).
+  `--granule <name> --out <dir>`. GOTCHA: don't set gdal.Warp dstNodata=0 for AVHRR.
+- **`bowtie_pipeline.py`** — `extract_tie_points()` chain:
+  dense coastline match (no global shift) → permissive infill (whole scene) →
+  seed-and-grow (bow-tie model) → interior gradient-structure match →
+  dedup → neighbour+LOO → median-consistency → NCC-validity gate →
+  **structure-refine** (`refine_tie_points`, added last: local gradient search per
+  point to capture within-feature STRETCH e.g. Sri Lanka) → **auto-protect drop**.
+  Warp = `build_shift_field()` = TPS (`fit_tps_field`) × **trust mask**
+  (`build_trust_mask`: weight 1 where clear + on-swath + inside tie-point convex
+  hull, feathered to 0 in cloudy/edge/extrapolated regions → those keep original
+  geolocation). `--inputs --output`.
+- **`bowtie_report.py`** (arrows, overlays, gallery, `ncc_validation.txt`),
+  **`visualize_overlay.py`**, **`zoom_swcoast.py`**, **`assemble_report.py`**
+  (one-page `report_page.png`) — all `--inputs --output`.
+- **`run_all_granules.py`** — batches all 4 granules into `runs/<granule>/{inputs,
+  output,output/report}`.
+
+Key milestones this session (in order): diagnosed AROSICS + global phase-corr both
+FAILED (spurious ~112 px lock) → built binary-coastline pipeline → matched the user's
+manual QGIS bow-tie ground truth (mean dx≈0, nadir-flip) → fixed a real NCC-verify bug
+(nd_shift-ing a small crop false-passes large shifts) → coverage fixes (west infill,
+straight coast, interior/Himalaya) → **removed all hardcoded region boxes → trust-mask
+auto-protection (data-driven)** → parametrized + batched 4 granules → structure-refine
+fixed the Sri Lanka stretch. Data: 4 granules; `33701_0512` is a byte-identical
+duplicate of `33701_0506`; one `modis_1km.tif` covers all; `modis_360m.tif` also exists.
+
+## Current state / results
+
+- 33701_0506: 117 NCC-validated tie points, scene cloud-masked NCC 0.019→0.053.
+  Per-region after structure-refine: Sri Lanka ~0→+0.37, South +0.09, Central +0.04,
+  Himalaya +0.03; cloudy Gujarat ~−0.02 (protected), featureless Gangetic ~0 (protected).
+- Corrected output: `bowtie_coreg/runs/<granule>/output/avhrr_bowtie_corrected.tif`
+  (and `bowtie_coreg/output/...` for the default 33701 run).
+- Ground truth (only for 33701_0506): `manual_registration/claude/curated_ta/off.npy`
+  copied into `inputs/`; other granules validated self-referentially.
+
+## Remaining limitation (the reason for the next step)
+
+The correction only exists where there are matchable **coastline/terrain features**.
+Regions with none — heavy **cloud** (e.g. Gujarat that pass) and **featureless**
+interior (Gangetic plain) — are left as ORIGINAL (protected). Also the correction is a
+free TPS from sparse points; small residual misalignments remain even on covered areas
+(cross-sensor NCC is inherently low, ~0.05–0.5).
+
+## NEXT PLAN — Stage-2 local phase-correlation refinement (user-chosen)
+
+**Idea (validated as sound):** run local phase correlation as a SECOND stage on the
+Stage-1 output `avhrr_bowtie_corrected.tif` (NOT on the raw AVHRR). Rationale — phase
+correlation estimates a translation per window and needs the in-window residual to be a
+small ~pure translation. On the raw image the bow-tie was too large/stretched (phase
+corr failed before, confirmed). After Stage-1 removes the bow-tie, the residual is small
+→ phase correlation now works. Coarse (NCC) → fine (phase-corr) refinement.
+
+**Where it can help:** (a) sub-pixel cleanup on already-corrected coasts (marginal);
+(b) the real upside — **textured interior regions that had NO coastline** (e.g. Gangetic
+farmland/rivers) where windowed phase correlation can use texture the coastline matcher
+couldn't. **Where it will NOT help:** cloudy regions (Gujarat) — no signal.
+
+**Implementation sketch (reuse existing functions in `bowtie_pipeline.py`):**
+1. New script `phasecorr_refine.py` (or a Stage-2 flag). Inputs: corrected tif +
+   `m_arr` + masks from `inputs/`.
+2. Build gradient/structure images of the CORRECTED AVHRR and MODIS via
+   `gradient_structure()` (raw intensity is unreliable cross-sensor).
+3. Dense grid of windows (~96–128 px). Per window run masked
+   `skimage.registration.phase_cross_correlation(ref, mov, reference_mask,
+   moving_mask, upsample_factor=10)` → residual (drow, dcol).
+4. Gate hard: reject if phase-corr peak weak, if local cloud/valid low, and **cap the
+   residual magnitude** (~≤15–20 px — Stage-1 already removed the bulk; a large residual
+   is a wrong lock). Also pass each surviving residual through the existing
+   `ncc_valid_mask()` real-image gate.
+5. Fit a residual TPS field (`fit_tps_field`) from surviving residuals × `build_trust_mask`,
+   warp the Stage-1 output again (`warp_with_field`) → Stage-2 output. Keep it a separate
+   file (`avhrr_bowtie_corrected_stage2.tif`) so Stage-1 is preserved for comparison.
+6. Validate: `ncc_validation.txt`-style cloud-masked NCC Stage-1 vs Stage-2, per 3×3
+   tile; must show no regression on covered regions and (hopefully) gains in textured
+   interior. Visual red/cyan overlay Stage-1 vs Stage-2.
+
+**Honest expectation to set:** likely a modest, incremental gain (sub-pixel on coasts +
+some interior textured coverage), not a large jump. The genuinely bigger lever for
+"correct everywhere incl. cloud/featureless" is a **parametric panoramic distortion
+model** (smooth physical function of across-track column-vs-nadir + along-track row) fit
+to the tie points, which extrapolates a physically-correct correction into feature-less
+regions — recommend keeping this as the alternative if Stage-2 phase-corr underwhelms.
+
+## Open item to check next chat
+
+L1B navigation data availability was "not sure". If AVHRR L1B scan-geometry / ephemeris
+(or `pygac`/`satpy` to regenerate geolocation) IS available, an ANALYTIC panoramic
+correction becomes possible (no tie points anywhere) — the "proper" fix. Check first.
+
+## Verification (Stage-2)
+
+```
+conda run -n geo python bowtie_coreg/phasecorr_refine.py --inputs <inputs> --output <output>
+```
+
+Compare `output/report/ncc_validation.txt` Stage-1 vs Stage-2 (overall + 3×3 tiles);
+generate a Stage-1-vs-Stage-2 red/cyan overlay + interior (Gangetic) zoom; confirm no
+regression on coasts/Sri Lanka and check for gains in textured interior. Then batch via
+`run_all_granules.py` (add the Stage-2 step).

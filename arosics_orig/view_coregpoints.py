@@ -5,7 +5,7 @@ import numpy as np
 from arosics import COREG_LOCAL
 
 im_reference = "/home/bhaskar/Documents/ImageReg/arosics_orig/modis_1km.tif"
-im_target    = "/home/bhaskar/Documents/ImageReg/arosics_orig/05_avhrr_reflectance_ch2.tif"
+im_target    = "/home/bhaskar/Documents/ImageReg/bowtie_coreg/runs/hrpt_M03_20250506_0420_33701/output/avhrr_bowtie_corrected.tif"
 
 # Keep these identical to run_coreg_local.py so the tie point grid matches
 # exactly what that run produced.
